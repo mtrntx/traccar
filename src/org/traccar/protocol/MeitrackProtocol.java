@@ -20,6 +20,7 @@ import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.handler.codec.string.StringEncoder;
 import org.traccar.BaseProtocol;
 import org.traccar.TrackerServer;
+import org.traccar.model.Command;
 
 import java.nio.ByteOrder;
 import java.util.List;
@@ -28,6 +29,9 @@ public class MeitrackProtocol extends BaseProtocol {
 
     public MeitrackProtocol() {
         super("meitrack");
+        setSupportedCommands(
+                Command.TYPE_ENGINE_STOP,
+                Command.TYPE_ENGINE_RESUME);
     }
 
     @Override
@@ -38,6 +42,7 @@ public class MeitrackProtocol extends BaseProtocol {
                 pipeline.addLast("frameDecoder", new MeitrackFrameDecoder());
                 pipeline.addLast("stringEncoder", new StringEncoder());
                 pipeline.addLast("objectDecoder", new MeitrackProtocolDecoder(MeitrackProtocol.this));
+                pipeline.addLast("objectEncoder", new MeitrackProtocolEncoder());
             }
         };
         server.setEndianness(ByteOrder.LITTLE_ENDIAN);
