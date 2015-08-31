@@ -43,6 +43,7 @@ public class MeitrackProtocol extends BaseProtocol {
                 pipeline.addLast("frameDecoder", new MeitrackFrameDecoder());
                 pipeline.addLast("stringEncoder", new StringEncoder());
                 pipeline.addLast("objectDecoder", new MeitrackProtocolDecoder(MeitrackProtocol.this));
+                pipeline.addLast("objectEncoder", new MeitrackProtocolEncoder());
             }
         };
         server.setEndianness(ByteOrder.LITTLE_ENDIAN);
