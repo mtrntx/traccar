@@ -1,17 +1,15 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
-import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
+import static org.traccar.helper.DecoderVerifier.verify;
 
-public class SuntechProtocolDecoderTest {
+public class SuntechProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        SuntechProtocolDecoder decoder = new SuntechProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        SuntechProtocolDecoder decoder = new SuntechProtocolDecoder(new SuntechProtocol());
         
         assertNull(decoder.decode(null, null, "SA200ALV;317652"));
 
@@ -41,6 +39,12 @@ public class SuntechProtocolDecoderTest {
 
         verify(decoder.decode(null, null,
                 "ST910;Location;344506;017;20130727;14:10:00;-25.398714;-049.296818;000.187;000.00;1;4.32;1;1;0001"));
+
+        verify(decoder.decode(null, null,
+                "ST300STT;205027329;03;374;20150108;17:54:42;177b38;-23.566052;-046.477588;000.000;000.00;0;0;0;12.11;000000;1;0312"));
+        
+        verify(decoder.decode(null, null,
+                "ST910;Emergency;205283272;500;20150716;19:12:01;-23.659019;-046.695403;000.602;000.00;0;4.2;1;1;02;10820;2fdb090736;724;05;0;2311;255;0;100"));
 
     }
 

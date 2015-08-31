@@ -15,24 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class V680ProtocolDecoder extends BaseProtocolDecoder {
 
-    private Long deviceId;
-
-    public V680ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public V680ProtocolDecoder(V680Protocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -40,13 +39,13 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
             "([^#]*)#)?" +                 // User
             "(\\d+)#" +                    // Fix
             "([^#]+)#" +                   // Password
-            "[^#]+#" +
+            "([^#]+)#" +                   // Event
             "(\\d+)#" +                    // Packet number
             "([^#]+)?#?" +                 // GSM base station
             "(?:[^#]+#)?" +
-            "(\\d+)(\\d{2}\\.\\d+)," +     // Longitude (DDDMM.MMMM)
+            "(\\d+)?(\\d{2}\\.\\d+)," +    // Longitude (DDDMM.MMMM)
             "([EW])," +
-            "(\\d+)(\\d{2}\\.\\d+)," +     // Latitude (DDMM.MMMM)
+            "(\\d+)?(\\d{2}\\.\\d+)," +    // Latitude (DDMM.MMMM)
             "([NS])," +
             "(\\d+\\.\\d+)," +             // Speed
             "(\\d+\\.?\\d*)?#" +           // Course
@@ -56,7 +55,7 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -65,11 +64,7 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
         // Detect device ID
         if (sentence.length() == 16) {
             String imei = sentence.substring(1, sentence.length());
-            try {
-                deviceId = getDataManager().getDeviceByImei(imei).getId();
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei);
-            }
+            identify(imei, channel);
         } else {
 
             // Parse message
@@ -80,61 +75,56 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
 
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("v680");
+            position.setProtocol(getProtocolName());
             Integer index = 1;
 
             // Get device by IMEI
             String imei = parser.group(index++);
             if (imei != null) {
-                try {
-                    deviceId = getDataManager().getDeviceByImei(imei).getId();
-                } catch(Exception error) {
-                    Log.warning("Unknown device - " + imei);
-                    return null;
-                }
+                identify(imei, channel);
             }
-            if (deviceId == null) {
+            if (!hasDeviceId()) {
                 return null;
             }
-            position.setDeviceId(deviceId);
+            position.setDeviceId(getDeviceId());
 
             // User
-            extendedInfo.set("user", parser.group(index++));
+            position.set("user", parser.group(index++));
 
             // Validity
             position.setValid(Integer.valueOf(parser.group(index++)) > 0);
 
             // Password
-            extendedInfo.set("password", parser.group(index++));
+            position.set("password", parser.group(index++));
+
+            // Event
+            position.set(Event.KEY_EVENT, parser.group(index++));
 
             // Packet number
-            extendedInfo.set("packet", parser.group(index++));
+            position.set("packet", parser.group(index++));
 
             // GSM base station
-            extendedInfo.set("gsm", parser.group(index++));
+            position.set(Event.KEY_GSM, parser.group(index++));
 
             // Longitude
-            Double longitude = Double.valueOf(parser.group(index++));
+            String lon = parser.group(index++);
+            Double longitude = (lon != null) ? Double.valueOf(lon) : 0.0;
             longitude += Double.valueOf(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
             position.setLongitude(longitude);
 
             // Latitude
-            Double latitude = Double.valueOf(parser.group(index++));
+            String lat = parser.group(index++);
+            Double latitude = (lat != null) ? Double.valueOf(lat) : 0.0;
             latitude += Double.valueOf(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
             position.setLatitude(latitude);
-
-            // Altitude
-            position.setAltitude(0.0);
 
             // Speed and Course
             position.setSpeed(Double.valueOf(parser.group(index++)));
             String course = parser.group(index++);
             if (course != null) {
                 position.setCourse(Double.valueOf(course));
-            } else {
-                position.setCourse(0.0);
             }
 
             // Date
@@ -154,8 +144,6 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
             time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
             time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
             position.setTime(time.getTime());
-
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
         }
         

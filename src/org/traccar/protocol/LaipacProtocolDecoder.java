@@ -15,23 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.Crc;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class LaipacProtocolDecoder extends BaseProtocolDecoder {
 
-    public LaipacProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public LaipacProtocolDecoder(LaipacProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -52,7 +52,7 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -71,16 +71,14 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("laipac");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
 
         // Identification
-        String id = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(parser.group(index++), channel)) {
+            return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -117,9 +115,6 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
         position.setTime(time.getTime());
 
-        // Altitude
-        position.setAltitude(0.0);
-
         // Response
         String type = parser.group(index++);
         String checksum = parser.group(index++);
@@ -139,8 +134,6 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
         if (response != null && channel != null) {
             channel.write(response + "\r\n");
         }
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

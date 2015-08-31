@@ -1,16 +1,15 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import org.junit.Test;
 
-public class WondexProtocolDecoderTest {
+public class WondexProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        WondexProtocolDecoder decoder = new WondexProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        WondexProtocolDecoder decoder = new WondexProtocolDecoder(new WondexProtocol());
         
         verify(decoder.decode(null, null,
                 "1044989601,20130323074605,0.000000,90.000000,0,000,0,0,2"));

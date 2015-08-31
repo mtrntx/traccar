@@ -20,7 +20,8 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.management.RuntimeMXBean;
-import java.util.Properties;
+import java.nio.charset.Charset;
+
 import org.apache.log4j.Appender;
 import org.apache.log4j.DailyRollingFileAppender;
 import org.apache.log4j.Layout;
@@ -28,27 +29,34 @@ import org.apache.log4j.Level;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
+import org.apache.log4j.varia.NullAppender;
 import org.jboss.netty.logging.AbstractInternalLogger;
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
+import org.traccar.Config;
 
 public class Log {
     
     private static final String LOGGER_NAME = "traccar";
-    
+
+    private static final String STACK_PACKAGE = "org.traccar";
+    private static final int STACK_LIMIT = 3;
+
     private static Logger logger = null;
     
-    public static void setupLogger(Properties properties) throws IOException {
+    public static void setupLogger(Config config) throws IOException {
 
         Layout layout = new PatternLayout("%d{yyyy-MM-dd HH:mm:ss} %5p: %m%n");
 
         Appender appender = new DailyRollingFileAppender(
-                layout, properties.getProperty("logger.file"), "'.'yyyyMMdd");
+                layout, config.getString("logger.file"), "'.'yyyyMMdd");
 
         LogManager.resetConfiguration();
+        LogManager.getRootLogger().addAppender(new NullAppender());
+        
         logger = Logger.getLogger(LOGGER_NAME);
         logger.addAppender(appender);
-        logger.setLevel(Level.ALL);
+        logger.setLevel(Level.toLevel(config.getString("logger.level"), Level.ALL));
 
         // Workaround for "Bug 745866 - (EDG-45) Possible netty logging config problem"
         InternalLoggerFactory.setDefaultFactory(new InternalLoggerFactory() {
@@ -57,6 +65,9 @@ public class Log {
                 return new NettyInternalLogger();
             }
         });
+
+        Log.logSystemInfo();
+        Log.info("Version: " + Log.class.getPackage().getImplementationVersion());
     }
 
     public static Logger getLogger() {
@@ -70,22 +81,26 @@ public class Log {
     public static void logSystemInfo() {
         try {
             OperatingSystemMXBean operatingSystemBean = ManagementFactory.getOperatingSystemMXBean();
-            Log.info("Operating System" +
+            Log.info("Operating system" +
                 " name: " + operatingSystemBean.getName() +
                 " version: " + operatingSystemBean.getVersion() +
                 " architecture: " + operatingSystemBean.getArch());
 
             RuntimeMXBean runtimeBean = ManagementFactory.getRuntimeMXBean();
-            Log.info("Java Runtime" +
+            Log.info("Java runtime" +
                 " name: " + runtimeBean.getVmName() +
                 " vendor: " + runtimeBean.getVmVendor() +
                 " version: " + runtimeBean.getVmVersion());
 
             MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
-            Log.info("Memory Limit" +
+            Log.info("Memory limit" +
                 " heap: " + memoryBean.getHeapMemoryUsage().getMax() / (1024 * 1024) + "mb" +
                 " non-heap: " + memoryBean.getNonHeapMemoryUsage().getMax() / (1024 * 1024) + "mb");
-        } catch (Exception e) {
+
+            Log.info("Character encoding: " +
+                    System.getProperty("file.encoding") + " charset: " + Charset.defaultCharset());
+
+        } catch (Exception error) {
             Log.warning("Failed to get system info");
         }
     }
@@ -106,23 +121,12 @@ public class Log {
         StringBuilder s = new StringBuilder();
         if (msg != null) {
             s.append(msg);
-            s.append(" - ");
         }
         if (exception != null) {
-            String exceptionMsg = exception.getMessage();
-            if (exceptionMsg != null) {
-                s.append(exceptionMsg);
+            if (msg != null) {
                 s.append(" - ");
             }
-            s.append(exception.getClass().getName());
-            StackTraceElement[] stack = exception.getStackTrace();
-            if (stack.length > 0) {
-                s.append(" (");
-                s.append(stack[0].getFileName());
-                s.append(":");
-                s.append(stack[0].getLineNumber());
-                s.append(")");
-            }
+            s.append(exceptionStack(exception));
         }
         getLogger().warn(s.toString());
     }
@@ -133,6 +137,58 @@ public class Log {
 
     public static void debug(String msg) {
         getLogger().debug(msg);
+    }
+
+    public static String exceptionStack(Throwable exception) {
+        StringBuilder s = new StringBuilder();
+        String exceptionMsg = exception.getMessage();
+        if (exceptionMsg != null) {
+            s.append(exceptionMsg);
+            s.append(" - ");
+        }
+        s.append(exception.getClass().getSimpleName());
+        StackTraceElement[] stack = exception.getStackTrace();
+
+        if (stack.length > 0) {
+            int count = STACK_LIMIT;
+            boolean first = true;
+            boolean skip = false;
+            String file = "";
+            s.append(" (");
+            for (StackTraceElement element : stack) {
+                if (count > 0 && element.getClassName().startsWith(STACK_PACKAGE)) {
+                    if (!first) {
+                        s.append(" < ");
+                    } else {
+                        first = false;
+                    }
+
+                    if (skip) {
+                        s.append("... < ");
+                        skip = false;
+                    }
+
+                    if (file.equals(element.getFileName())) {
+                        s.append("*:");
+                    } else {
+                        file = element.getFileName();
+                        s.append(file).append(":");
+                        count -= 1;
+                    }
+                    s.append(element.getLineNumber());
+                } else {
+                    skip = true;
+                }
+            }
+            if (skip) {
+                if (!first) {
+                    s.append(" < ");
+                }
+                s.append("...");
+            }
+            s.append(")");
+        }
+        return s.toString();
     }
 
     /**

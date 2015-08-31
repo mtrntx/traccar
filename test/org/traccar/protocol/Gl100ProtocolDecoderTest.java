@@ -1,17 +1,16 @@
 package org.traccar.protocol;
 
 import static org.junit.Assert.assertNull;
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import org.junit.Test;
 
-public class Gl100ProtocolDecoderTest {
+public class Gl100ProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        Gl100ProtocolDecoder decoder = new Gl100ProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        Gl100ProtocolDecoder decoder = new Gl100ProtocolDecoder(new Gl100Protocol());
 
         assertNull(decoder.decode(null, null,
                 "AT+GTHBD=HeartBeat,359231030000010,20090101000000,11F0,0102120204"));

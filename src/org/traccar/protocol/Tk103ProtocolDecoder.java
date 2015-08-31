@@ -15,43 +15,44 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.Context;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Tk103ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Tk103ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Tk103ProtocolDecoder(Tk103Protocol protocol) {
+        super(protocol);
     }
 
+    //088048003342 BR00 150807 A 1352.9871 N 10030.9084 E 000.0 110718 000.0 001010000 L00000000
     private static final Pattern pattern = Pattern.compile(
             "(\\d+)(,)?" +                 // Device ID
             ".{4},?" +                     // Command
             "\\d*" +                       // IMEI (?)
             "(\\d{2})(\\d{2})(\\d{2}),?" + // Date (YYMMDD)
             "([AV]),?" +                   // Validity
-            "(\\d{2})(\\d{2}\\.\\d{4})" +  // Latitude (DDMM.MMMM)
+            "(\\d{2})(\\d{2}\\.\\d+)" +    // Latitude (DDMM.MMMM)
             "([NS]),?" +
-            "(\\d{3})(\\d{2}\\.\\d{4})" +  // Longitude (DDDMM.MMMM)
+            "(\\d{3})(\\d{2}\\.\\d+)" +    // Longitude (DDDMM.MMMM)
             "([EW]),?" +
             "(\\d+\\.\\d)(?:\\d*,)?" +     // Speed
             "(\\d{2})(\\d{2})(\\d{2}),?" + // Time (HHMMSS)
-            "(\\d+\\.?\\d+),?" +           // Course
+            "(\\d+\\.?\\d),?" +            // Course
             "([0-9a-fA-F]{8})?,?" +        // State
-            "(?:L([0-9a-fA-F]+))?");       // Milage
+            "(?:L([0-9a-fA-F]+))?.*\\)?"); // Odometer
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -82,22 +83,14 @@ public class Tk103ProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("tk103");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
 
         // Get device by IMEI
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            // Compatibility mode (remove in future)
-            try {
-                position.setDeviceId(getDataManager().getDeviceByImei("000" + imei).getId());
-            } catch(Exception error2) {
-                Log.warning("Unknown device - " + imei);
-                return null;
-            }
+        if (!identify(parser.group(index++), channel)) {
+            return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -127,11 +120,12 @@ public class Tk103ProtocolDecoder extends BaseProtocolDecoder {
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
-        // Altitude
-        position.setAltitude(0.0);
-
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)) * 0.539957);
+        if (Context.getConfig().getBoolean(getProtocolName() + ".mph")) {
+            position.setSpeed(UnitsConverter.knotsFromMph(Double.valueOf(parser.group(index++))));
+        } else {
+            position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(parser.group(index++))));
+        }
 
         // Time
         time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
@@ -143,15 +137,13 @@ public class Tk103ProtocolDecoder extends BaseProtocolDecoder {
         position.setCourse(Double.valueOf(parser.group(index++)));
         
         // State
-        extendedInfo.set("state", parser.group(index++));
+        position.set(Event.KEY_STATUS, parser.group(index++));
 
-        // Milage
-        String milage = parser.group(index++);
-        if (milage != null) {
-            extendedInfo.set("milage", Integer.parseInt(milage, 16));
+        // Odometer
+        String odometer = parser.group(index++);
+        if (odometer != null) {
+            position.set(Event.KEY_ODOMETER, Long.parseLong(odometer, 16));
         }
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

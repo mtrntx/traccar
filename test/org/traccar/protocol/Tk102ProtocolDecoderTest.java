@@ -1,17 +1,16 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
 
-public class Tk102ProtocolDecoderTest {
+public class Tk102ProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        Tk102ProtocolDecoder decoder = new Tk102ProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        Tk102ProtocolDecoder decoder = new Tk102ProtocolDecoder(new Tk102Protocol());
 
         assertNull(decoder.decode(null, null, ""));
 
@@ -35,6 +34,9 @@ public class Tk102ProtocolDecoderTest {
         
         verify(decoder.decode(null, null,
                 "[;00000000106(ONE200834A5952.8114N01046.0832E003.93212071305010000)"));
+
+        verify(decoder.decode(null, null,
+                "[\u00930000000000F(ITV153047A1534.0805N03233.0888E000.00029041500000400&Wsz-wl001&B0000)]"));
 
     }
 

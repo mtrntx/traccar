@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2013 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2014 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,36 +16,37 @@
 package org.traccar.protocol;
 
 import java.nio.charset.Charset;
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.ChannelBufferTools;
 import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class EnforaProtocolDecoder extends BaseProtocolDecoder {
 
-    public EnforaProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public EnforaProtocolDecoder(EnforaProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
             "GPRMC," +
-            "(\\d{2})(\\d{2})(\\d{2}).(\\d{2})," + // Time (HHMMSS.SS)
+            "(\\d{2})(\\d{2})(\\d{2}).(\\d+)," + // Time (HHMMSS.SS)
             "([AV])," +                  // Validity
-            "(\\d{2})(\\d{2}.\\d{6})," + // Latitude (DDMM.MMMMMM)
+            "(\\d{2})(\\d{2}.\\d+)," +   // Latitude (DDMM.MMMMMM)
             "([NS])," +
-            "(\\d{3})(\\d{2}.\\d{6})," + // Longitude (DDDMM.MMMMMM)
+            "(\\d{3})(\\d{2}.\\d+)," +   // Longitude (DDDMM.MMMMMM)
             "([EW])," +
-            "(\\d+.\\d)?," +             // Speed
-            "(\\d+.\\d)?," +             // Course
+            "(\\d+.\\d+)?," +            // Speed
+            "(\\d+.\\d+)?," +            // Course
             "(\\d{2})(\\d{2})(\\d{2})," + // Date (DDMMYY)
             ".*[\r\n\u0000]*");
 
@@ -53,7 +54,7 @@ public class EnforaProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -94,16 +95,14 @@ public class EnforaProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("enfora");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
 
         // Get device by IMEI
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(imei, channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -128,9 +127,6 @@ public class EnforaProtocolDecoder extends BaseProtocolDecoder {
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
-        // Altitude
-        position.setAltitude(0.0);
-
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
 
@@ -138,8 +134,6 @@ public class EnforaProtocolDecoder extends BaseProtocolDecoder {
         String course = parser.group(index++);
         if (course != null) {
             position.setCourse(Double.valueOf(course));
-        } else {
-            position.setCourse(0.0);
         }
 
         // Date
@@ -147,8 +141,6 @@ public class EnforaProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
         time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
         position.setTime(time.getTime());
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

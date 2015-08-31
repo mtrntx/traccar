@@ -1,17 +1,16 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
 
-public class Tr20ProtocolDecoderTest {
+public class Tr20ProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        Tr20ProtocolDecoder decoder = new Tr20ProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        Tr20ProtocolDecoder decoder = new Tr20ProtocolDecoder(new Tr20Protocol());
 
         assertNull(decoder.decode(null, null, "%%TRACKPRO01,1"));
 

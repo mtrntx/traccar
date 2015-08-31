@@ -15,22 +15,20 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class TotemProtocolDecoder extends BaseProtocolDecoder {
 
-    public TotemProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public TotemProtocolDecoder(TotemProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern patternFirst = Pattern.compile(
@@ -57,14 +55,15 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             "\\d" +                             // Charged
             "(\\d{3})" +                        // Battery
             "(\\d{4})\\|" +                     // External Power
-            "(\\d+)\\|" +                       // ADC
-            "(\\p{XDigit}{8})\\|" +             // Location Code
+            "(?:(\\d+)\\|)?" +                  // ADC
+            "(\\p{XDigit}+)\\|" +               // Location Code
             "(\\d+)\\|" +                       // Temperature
-            "(\\d+.\\d+)\\|" +                  // Milage
+            "(\\d+.\\d+)\\|" +                  // Odometer
             "\\d+\\|" +                         // Serial Number
             ".*\\|?" +
-            "\\p{XDigit}{4}");                  // Checksum
-            
+            "\\p{XDigit}{4}" +                  // Checksum
+            "\r?\n?");
+
     private static final Pattern patternSecond = Pattern.compile(
             "\\$\\$" +                          // Header
             "\\p{XDigit}{2}" +                  // Length
@@ -87,9 +86,10 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+)\\|" +                       // ADC
             "(\\p{XDigit}{8})\\|" +             // Location Code
             "(\\d+)\\|" +                       // Temperature
-            "(\\d+.\\d+)\\|" +                  // Milage
+            "(\\d+.\\d+)\\|" +                  // Odometer
             "\\d+\\|" +                         // Serial Number
-            "\\p{XDigit}{4}");                  // Checksum
+            "\\p{XDigit}{4}" +                  // Checksum
+            "\r?\n?");
 
     private static final Pattern patternThird = Pattern.compile(
             "\\$\\$" +                          // Header
@@ -112,13 +112,14 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             "(\\d{3})" +                        // Course
             "(\\d{3})" +                        // Speed
             "(\\d{2}\\.\\d)" +                  // PDOP
-            "(\\d{7})" +                        // Milage
+            "(\\d{7})" +                        // Odometer
             "(\\d{2})(\\d{2}\\.\\d{4})" +       // Latitude (DDMM.MMMM)
             "([NS])" +
             "(\\d{3})(\\d{2}\\.\\d{4})" +       // Longitude (DDDMM.MMMM)
             "([EW])" +
             "\\d{4}" +                          // Serial Number
-            "\\p{XDigit}{4}");                  // Checksum
+            "\\p{XDigit}{4}" +                  // Checksum
+            "\r?\n?");
 
     private enum MessageFormat {
         first,
@@ -128,7 +129,7 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
         
         String sentence = (String) msg;
@@ -153,27 +154,24 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
         } else if (format == MessageFormat.third) {
             parser = patternThird.matcher(sentence);
         }
-        if (parser == null || !parser.matches()) {
+        if (!parser.matches()) {
             return null;
         }
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("totem");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
         
         // Alarm type
-        extendedInfo.set("alarm", parser.group(index++));
+        position.set(Event.KEY_ALARM, parser.group(index++));
         
         if (format == MessageFormat.first || format == MessageFormat.second) {
 
@@ -210,16 +208,12 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             String speed = parser.group(index++);
             if (speed != null) {
                 position.setSpeed(Double.valueOf(speed));
-            } else {
-                position.setSpeed(0.0);
             }
 
             // Course
             String course = parser.group(index++);
             if (course != null) {
                 position.setCourse(Double.valueOf(course));
-            } else {
-                position.setCourse(0.0);
             }
 
             // Date
@@ -234,30 +228,27 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             }
             position.setTime(time.getTime());
 
-            // Altitude
-            position.setAltitude(0.0);
-
             // Accuracy
-            extendedInfo.set("hdop", parser.group(index++));
+            position.set(Event.KEY_HDOP, parser.group(index++));
 
             // IO Status
-            extendedInfo.set("io", parser.group(index++));
+            position.set(Event.PREFIX_IO + 1, parser.group(index++));
 
             // Power
-            extendedInfo.set("battery", parser.group(index++));
-            extendedInfo.set("power", Double.valueOf(parser.group(index++)));
+            position.set(Event.KEY_BATTERY, parser.group(index++));
+            position.set(Event.KEY_POWER, Double.valueOf(parser.group(index++)));
 
             // ADC
-            extendedInfo.set("adc", parser.group(index++));
+            position.set(Event.PREFIX_ADC + 1, parser.group(index++));
 
             // Location Code
-            extendedInfo.set("lac", parser.group(index++));
+            position.set(Event.KEY_LAC, parser.group(index++));
 
             // Temperature
-            extendedInfo.set("temperature", parser.group(index++));
+            position.set(Event.PREFIX_TEMP + 1, parser.group(index++));
 
-            // Milage
-            extendedInfo.set("milage", parser.group(index++));
+            // Odometer
+            position.set(Event.KEY_ODOMETER, parser.group(index++));
         
         } else if (format == MessageFormat.third) {
 
@@ -273,28 +264,28 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             position.setTime(time.getTime());
             
             // IO Status
-            extendedInfo.set("io", parser.group(index++));
+            position.set(Event.PREFIX_IO + 1, parser.group(index++));
 
             // Power
-            extendedInfo.set("battery", Double.valueOf(parser.group(index++)) / 10);
-            extendedInfo.set("power", Double.valueOf(parser.group(index++)));
+            position.set(Event.KEY_BATTERY, Double.valueOf(parser.group(index++)) / 10);
+            position.set(Event.KEY_POWER, Double.valueOf(parser.group(index++)));
 
             // ADC
-            extendedInfo.set("adc1", parser.group(index++));
-            extendedInfo.set("adc2", parser.group(index++));
+            position.set(Event.PREFIX_ADC + 1, parser.group(index++));
+            position.set(Event.PREFIX_ADC + 2, parser.group(index++));
 
             // Temperature
-            extendedInfo.set("temperature1", parser.group(index++));
-            extendedInfo.set("temperature2", parser.group(index++));
+            position.set(Event.PREFIX_TEMP + 1, parser.group(index++));
+            position.set(Event.PREFIX_TEMP + 2, parser.group(index++));
 
             // Location Code
-            extendedInfo.set("lac", parser.group(index++));
+            position.set(Event.KEY_LAC, parser.group(index++));
 
             // Validity
             position.setValid(parser.group(index++).compareTo("A") == 0);
 
             // Satellites
-            extendedInfo.set("satellites", parser.group(index++));
+            position.set(Event.KEY_SATELLITES, parser.group(index++));
 
             // Course
             position.setCourse(Double.valueOf(parser.group(index++)));
@@ -302,14 +293,11 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             // Speed
             position.setSpeed(Double.valueOf(parser.group(index++)));
 
-            // Altitude
-            position.setAltitude(0.0);
-
             // PDOP
-            extendedInfo.set("pdop", parser.group(index++));
+            position.set("pdop", parser.group(index++));
 
-            // Milage
-            extendedInfo.set("milage", parser.group(index++));
+            // Odometer
+            position.set(Event.KEY_ODOMETER, parser.group(index++));
 
             // Latitude
             Double latitude = Double.valueOf(parser.group(index++));
@@ -324,9 +312,10 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             position.setLongitude(longitude);
         
         }
-
-        // Extended info
-        position.setExtendedInfo(extendedInfo.toString());
+        
+        if (channel != null) {
+            channel.write("ACK OK\r\n");
+        }
 
         return position;
     }

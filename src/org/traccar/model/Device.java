@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,61 +15,33 @@
  */
 package org.traccar.model;
 
-/**
- * Device
- */
-public class Device {
+import java.util.Date;
 
-    /**
-     * Id
-     */
-    private Long id;
+public class Device implements Factory {
 
-    public Long getId() {
-        return id;
+    @Override
+    public Device create() {
+        return new Device();
     }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    private long id;
+    public long getId() { return id; }
+    public void setId(long id) { this.id = id; }
+    
+    private String name;
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-    /**
-     * International mobile equipment identity (IMEI)
-     */
-    private String imei;
-
-    public String getImei() {
-        return imei;
-    }
-
-    public void setImei(String imei) {
-        this.imei = imei;
-    }
-
-    /**
-     * Phone number
-     */
-    private String phoneNumber;
-
-    public String getPhoneNumber() {
-        return phoneNumber;
-    }
-
-    public void setPhoneNumber(String phoneNumber) {
-        this.phoneNumber = phoneNumber;
-    }
-
-    /**
-     * Unique id (for some trackers)
-     */
     private String uniqueId;
-
-    public String getUniqueId() {
-        return uniqueId;
-    }
-
-    public void setUniqueId(String uniqueId) {
-        this.uniqueId = uniqueId;
-    }
+    public String getUniqueId() { return uniqueId; }
+    public void setUniqueId(String uniqueId) { this.uniqueId = uniqueId; }
+    
+    private String status;
+    
+    private Date lastUpdate;
+    
+    private long positionId;
+    
+    private long dataId;
 
 }

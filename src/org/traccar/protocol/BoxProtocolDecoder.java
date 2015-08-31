@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2014 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,24 +15,24 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class BoxProtocolDecoder extends BaseProtocolDecoder {
-    
-    private Long deviceId;
 
-    public BoxProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public BoxProtocolDecoder(BoxProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -44,14 +44,14 @@ public class BoxProtocolDecoder extends BaseProtocolDecoder {
             "(-?\\d+\\.\\d+)," +          // Longitude
             "(\\d+\\.?\\d*)," +           // Speed
             "(\\d+\\.?\\d*)," +           // Course
-            "(\\d+)," +                   // Distance
+            "(\\d+\\.?\\d*)," +           // Distance
             "(\\d+)," +                   // Event
             "(\\d+)" +                    // Status
             ".*");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -60,15 +60,18 @@ public class BoxProtocolDecoder extends BaseProtocolDecoder {
             
             int index = sentence.indexOf(',', 2) + 1;
             String id = sentence.substring(index, sentence.indexOf(',', index));
+            identify(id, channel);
+        }
 
-            try {
-                deviceId = getDataManager().getDeviceByImei(id).getId();
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + id);
+        else if (sentence.startsWith("E,")) {
+
+            if (channel != null) {
+                channel.write("A," + sentence.substring(2) + "\r");
             }
+
         }
         
-        else if (sentence.startsWith("L,")) {
+        else if (sentence.startsWith("L,") && hasDeviceId()) {
 
             // Parse message
             Matcher parser = pattern.matcher(sentence);
@@ -78,41 +81,38 @@ public class BoxProtocolDecoder extends BaseProtocolDecoder {
 
             // Create new position
             Position position = new Position();
-            position.setDeviceId(deviceId);
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("box");
+            position.setDeviceId(getDeviceId());
+            position.setProtocol(getProtocolName());
 
             Integer index = 1;
 
             // Time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+            time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
             position.setTime(time.getTime());
 
             // Location
-            position.setLatitude(Double.valueOf(parser.group(index++)));
-            position.setLongitude(Double.valueOf(parser.group(index++)));
-            position.setSpeed(Double.valueOf(parser.group(index++)));
-            position.setCourse(Double.valueOf(parser.group(index++)));
-            position.setAltitude(0.0);
+            position.setLatitude(Double.parseDouble(parser.group(index++)));
+            position.setLongitude(Double.parseDouble(parser.group(index++)));
+            position.setSpeed(UnitsConverter.knotsFromKph(Double.parseDouble(parser.group(index++))));
+            position.setCourse(Double.parseDouble(parser.group(index++)));
             
             // Distance
-            extendedInfo.set("milage", parser.group(index++));
+            position.set(Event.KEY_ODOMETER, parser.group(index++));
             
             // Event
-            extendedInfo.set("event", parser.group(index++));
+            position.set(Event.KEY_EVENT, parser.group(index++));
             
             // Status
-            int status = Integer.valueOf(parser.group(index++));
+            int status = Integer.parseInt(parser.group(index++));
             position.setValid((status & 0x04) == 0);
-            extendedInfo.set("status", status);
-
-            position.setExtendedInfo(extendedInfo.toString());
+            position.set(Event.KEY_STATUS, status);
             return position;
         }
         

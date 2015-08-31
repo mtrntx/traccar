@@ -15,22 +15,22 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class Gl100ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Gl100ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Gl100ProtocolDecoder(Gl100Protocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -53,7 +53,7 @@ public class Gl100ProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -74,18 +74,15 @@ public class Gl100ProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("gl100");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Validity
         position.setValid(Integer.valueOf(parser.group(index++)) == 0);
@@ -109,8 +106,6 @@ public class Gl100ProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
         time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
         position.setTime(time.getTime());
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

@@ -15,6 +15,7 @@
  */
 package org.traccar.protocol;
 
+import java.net.SocketAddress;
 import java.nio.charset.Charset;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -23,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFutureListener;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.handler.codec.http.DefaultHttpResponse;
 import org.jboss.netty.handler.codec.http.HttpRequest;
 import org.jboss.netty.handler.codec.http.HttpResponse;
@@ -31,20 +31,18 @@ import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 import org.jboss.netty.handler.codec.http.HttpVersion;
 import org.jboss.netty.handler.codec.http.QueryStringDecoder;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class OsmAndProtocolDecoder extends BaseProtocolDecoder {
     
-    public OsmAndProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public OsmAndProtocolDecoder(OsmAndProtocol protocol) {
+        super(protocol);
     }
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
         
         HttpRequest request = (HttpRequest) msg;
@@ -58,16 +56,14 @@ public class OsmAndProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("osmand");
+        position.setProtocol(getProtocolName());
 
         // Identification
         String id = params.get(params.containsKey("id") ? "id" : "deviceid").get(0);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(id, channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Decode position
         position.setValid(true);
@@ -87,36 +83,38 @@ public class OsmAndProtocolDecoder extends BaseProtocolDecoder {
         // Optional parameters
         if (params.containsKey("speed")) {
             position.setSpeed(Double.valueOf(params.get("speed").get(0)));
-        } else {
-            position.setSpeed(0.0);
         }
+
         if (params.containsKey("bearing")) {
             position.setCourse(Double.valueOf(params.get("bearing").get(0)));
         } else if (params.containsKey("heading")) {
             position.setCourse(Double.valueOf(params.get("heading").get(0)));
-        } else {
-            position.setCourse(0.0);
-        }
-        if (params.containsKey("altitude")) {
-            position.setAltitude(Double.valueOf(params.get("altitude").get(0)));
-        } else {
-            position.setAltitude(0.0);
-        }
-        if (params.containsKey("hdop")) {
-            extendedInfo.set("hdop", params.get("hdop").get(0));
-        }
-        if (params.containsKey("vacc")) {
-            extendedInfo.set("vacc", params.get("vacc").get(0));
-        }
-        if (params.containsKey("hacc")) {
-            extendedInfo.set("hacc", params.get("hacc").get(0));
-        }
-        if (params.containsKey("batt")) {
-            extendedInfo.set("battery", params.get("batt").get(0));
         }
 
-        position.setExtendedInfo(extendedInfo.toString());
-        
+        if (params.containsKey("altitude")) {
+            position.setAltitude(Double.valueOf(params.get("altitude").get(0)));
+        }
+
+        if (params.containsKey("hdop")) {
+            position.set(Event.KEY_HDOP, params.get("hdop").get(0));
+        }
+
+        if (params.containsKey("vacc")) {
+            position.set("vacc", params.get("vacc").get(0));
+        }
+
+        if (params.containsKey("hacc")) {
+            position.set("hacc", params.get("hacc").get(0));
+        }
+
+        if (params.containsKey("batt")) {
+            position.set(Event.KEY_BATTERY, params.get("batt").get(0));
+        }
+
+        if (params.containsKey("desc")) {
+            position.set("description", params.get("desc").get(0));
+        }
+
         // Send response
         if (channel != null) {
             HttpResponse response = new DefaultHttpResponse(

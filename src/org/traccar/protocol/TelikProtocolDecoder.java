@@ -15,22 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class TelikProtocolDecoder extends BaseProtocolDecoder {
 
-    public TelikProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public TelikProtocolDecoder(TelikProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -51,7 +52,7 @@ public class TelikProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         // Parse message
@@ -62,21 +63,18 @@ public class TelikProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("telik");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
-        String id = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Message type
-        extendedInfo.set("type", parser.group(index++));
+        position.set(Event.KEY_TYPE, parser.group(index++));
         
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -92,7 +90,6 @@ public class TelikProtocolDecoder extends BaseProtocolDecoder {
         // Location
         position.setLongitude(Double.valueOf(parser.group(index++)) / 10000);
         position.setLatitude(Double.valueOf(parser.group(index++)) / 10000);
-        position.setAltitude(0.0);
 
         // Validity
         position.setValid(parser.group(index++).compareTo("1") != 0);
@@ -104,10 +101,7 @@ public class TelikProtocolDecoder extends BaseProtocolDecoder {
         position.setCourse(Double.valueOf(parser.group(index++)));
 
         // Satellites
-        extendedInfo.set("satellites", parser.group(index++));
-
-        // Extended info
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.KEY_SATELLITES, parser.group(index++));
 
         return position;
     }

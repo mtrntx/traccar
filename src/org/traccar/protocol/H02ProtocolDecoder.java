@@ -16,24 +16,25 @@
 package org.traccar.protocol;
 
 import java.nio.charset.Charset;
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class H02ProtocolDecoder extends BaseProtocolDecoder {
 
-    public H02ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public H02ProtocolDecoder(H02Protocol protocol) {
+        super(protocol);
     }
     
     private static double readCoordinate(ChannelBuffer buf, boolean lon) {
@@ -55,23 +56,20 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
         return result;
     }
     
-    private Position decodeBinary(ChannelBuffer buf) {
+    private Position decodeBinary(ChannelBuffer buf, Channel channel) {
         
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("h02");
+        position.setProtocol(getProtocolName());
         
         buf.readByte(); // marker
 
         // Identification
-        String id = ChannelBufferTools.readHexString(buf, 10);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(ChannelBufferTools.readHexString(buf, 10), channel)) {
             return null;
         }
-        
+        position.setDeviceId(getDeviceId());
+
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
@@ -85,7 +83,7 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
         
         // Location
         double latitude = readCoordinate(buf, false);
-        int x = buf.readByte(); // reserved
+        position.set(Event.KEY_POWER, buf.readByte());
         double longitude = readCoordinate(buf, true);
         int flags = buf.readUnsignedByte() & 0x0f;
         position.setValid((flags & 0x02) != 0);
@@ -93,16 +91,13 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
         if ((flags & 0x08) == 0) longitude = -longitude;
         position.setLatitude(latitude);
         position.setLongitude(longitude);
-        position.setAltitude(0.0);
 
         // Speed and course
-        position.setSpeed((double) ChannelBufferTools.readHexInteger(buf, 3));
+        position.setSpeed(ChannelBufferTools.readHexInteger(buf, 3));
         position.setCourse((buf.readUnsignedByte() & 0x0f) * 100.0 + ChannelBufferTools.readHexInteger(buf, 2));
         
         // Status
-        extendedInfo.set("status", ChannelBufferTools.readHexString(buf, 8));
-        
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.KEY_STATUS, ChannelBufferTools.readHexString(buf, 8));
         return position;
     }
 
@@ -113,9 +108,9 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
             ".*" +
             "(\\d{2})(\\d{2})(\\d{2})," +       // Time (HHMMSS)
             "([AV])," +                         // Validity
-            "(\\d+)(\\d{2}.\\d+)," +            // Latitude (DDMM.MMMM)
+            "-?(\\d+)-?(\\d{2}.\\d+)," +        // Latitude (DDMM.MMMM)
             "([NS])," +
-            "(\\d+)(\\d{2}.\\d+)," +            // Longitude (DDMM.MMMM)
+            "-?(\\d+)-?(\\d{2}.\\d+)," +        // Longitude (DDMM.MMMM)
             "([EW])," +
             "(\\d+.?\\d*)," +                   // Speed
             "(\\d+.?\\d*)?," +                  // Course
@@ -123,7 +118,7 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
             "(\\p{XDigit}{8})" +                // Status
             ".*");
     
-    private Position decodeText(String sentence) {
+    private Position decodeText(String sentence, Channel channel) {
 
         // Parse message
         Matcher parser = pattern.matcher(sentence);
@@ -133,18 +128,15 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("h02");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -167,9 +159,6 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
         longitude += Double.valueOf(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
-        
-        // Altitude
-        position.setAltitude(0.0);
 
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
@@ -178,8 +167,6 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
         String course = parser.group(index++);
         if (course != null) {
             position.setCourse(Double.valueOf(course));
-        } else {
-            position.setCourse(0.0);
         }
 
         // Date
@@ -189,15 +176,13 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
         position.setTime(time.getTime());
         
         // Status
-        extendedInfo.set("status", parser.group(index++));
-
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.KEY_STATUS, parser.group(index++));
         return position;
     }
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
         
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -206,9 +191,9 @@ public class H02ProtocolDecoder extends BaseProtocolDecoder {
         // TODO X mode?
 
         if (marker.equals("*")) {
-            return decodeText(buf.toString(Charset.defaultCharset()));
+            return decodeText(buf.toString(Charset.defaultCharset()), channel);
         } else if (marker.equals("$")) {
-            return decodeBinary(buf);
+            return decodeBinary(buf, channel);
         }
 
         return null;

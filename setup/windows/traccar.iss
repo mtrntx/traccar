@@ -1,6 +1,6 @@
 [Setup]
 AppName=Traccar
-AppVersion=2.8
+AppVersion=3.1
 DefaultDirName={pf}\Traccar
 AlwaysRestart=yes
 
@@ -10,6 +10,7 @@ Name: "{app}\conf"
 Name: "{app}\data"
 Name: "{app}\lib"
 Name: "{app}\logs"
+Name: "{app}\web"
 
 [Files]
 Source: "..\wrapper\bin\wrapper-windows-x86-32.exe"; DestDir: "{app}\bin"; DestName: "wrapper.exe"
@@ -22,8 +23,8 @@ Source: "..\wrapper\src\conf\wrapper.conf.in"; DestDir: "{app}\conf"; DestName: 
 
 Source: "..\..\target\tracker-server.jar"; DestDir: "{app}"
 Source: "..\..\target\lib\*"; DestDir: "{app}\lib"
-Source: "..\traccar-web.war"; DestDir: "{app}"
-Source: "traccar.cfg"; DestDir: "{app}\conf"; AfterInstall: ConfigureApplication
+Source: "..\..\web\*"; DestDir: "{app}\web"; Flags: recursesubdirs
+Source: "traccar.xml"; DestDir: "{app}\conf"; AfterInstall: ConfigureApplication
 
 [Run]
 Filename: "{app}\bin\InstallTraccar-NT.bat"
@@ -32,16 +33,28 @@ Filename: "{app}\bin\InstallTraccar-NT.bat"
 Filename: "{app}\bin\UninstallTraccar-NT.bat"
 
 [Code]
+function GetLocalMachine(): Integer;
+begin
+  if IsWin64 then
+  begin
+    Result := HKLM64;
+  end
+  else
+  begin
+    Result := HKEY_LOCAL_MACHINE;
+  end;
+end;
+
 function InitializeSetup(): Boolean;
 begin
-  if  RegKeyExists(HKEY_LOCAL_MACHINE, 'SOFTWARE\JavaSoft\Java Runtime Environment') then
+  if RegKeyExists(GetLocalMachine(), 'SOFTWARE\JavaSoft\Java Runtime Environment') then
   begin
     Result := true;
   end
   else
   begin
     Result := false;
-    MsgBox('This application requires Java Runtime Environment version 1.6 or later. Please download and install the JRE and run this setup again.', mbCriticalError, MB_OK);
+    MsgBox('This application requires Java Runtime Environment version 7 or later. Please download and install the JRE and run this setup again. If you have Java installed and still get this error, you need to re-install it from offline installer (for more info see https://www.traccar.org/windows/).', mbCriticalError, MB_OK);
   end;
 end;
 
@@ -51,7 +64,8 @@ var
 begin
   LoadStringFromFile(ExpandConstant(CurrentFileName), S);
   Insert('wrapper.java.classpath.2=../tracker-server.jar' + #13#10, S, Pos('wrapper.java.classpath.1', S));
-  Insert(ExpandConstant('wrapper.app.parameter.2="{app}\conf\traccar.cfg"') + #13#10, S, Pos('wrapper.app.parameter.1', S));
+  Insert(ExpandConstant('wrapper.app.parameter.2="{app}\conf\traccar.xml"') + #13#10, S, Pos('wrapper.app.parameter.1', S));
+  StringChangeEx(S, 'wrapper.java.additional.1=', 'wrapper.java.additional.1=-Dfile.encoding=UTF-8', true);
   StringChangeEx(S, '<YourMainClass>', 'org.traccar.Main', true);
   StringChangeEx(S, '@app.name@', 'Traccar', true);
   StringChangeEx(S, '@app.long.name@', 'Traccar', true);
@@ -65,8 +79,8 @@ var
   S: String;
 begin
   LoadStringFromFile(ExpandConstant(CurrentFileName), S);
-  StringChangeEx(S, '[DATABASE]', ExpandConstant('{app}\data\database'), true);
-  StringChangeEx(S, '[WAR]', ExpandConstant('{app}\traccar-web.war'), true);
+  StringChangeEx(S, '[WEB]', ExpandConstant('{app}\web'), true);
   StringChangeEx(S, '[LOG]', ExpandConstant('{app}\logs\tracker-server.log'), true);
+  StringChangeEx(S, '[DATABASE]', ExpandConstant('{app}\data\database'), true);
   SaveStringToFile(ExpandConstant(CurrentFileName), S, false);
 end;

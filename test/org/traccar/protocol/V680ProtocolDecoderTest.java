@@ -1,17 +1,16 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
 
-public class V680ProtocolDecoderTest {
+public class V680ProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        V680ProtocolDecoder decoder = new V680ProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        V680ProtocolDecoder decoder = new V680ProtocolDecoder(new V680Protocol());
         
         assertNull(decoder.decode(null, null,
                 "#353588102019155"));
@@ -60,6 +59,9 @@ public class V680ProtocolDecoderTest {
         
         verify(decoder.decode(null, null,
                 "#353588102031599##1#0000#AUT#01#41300304843fc1#7955.124400,E,642.095500,N,5.28,95.21#041213#074431.000##"));
+        
+        verify(decoder.decode(null, null,
+                "1#0000#AUT#01#23403007fa650e#16.747700,W,5136.356500,N,0.00,0.00#040415#002051.000"));
 
     }
 

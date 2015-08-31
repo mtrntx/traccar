@@ -15,22 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class ManPowerProtocolDecoder extends BaseProtocolDecoder {
 
-    public ManPowerProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public ManPowerProtocolDecoder(ManPowerProtocol protocol) {
+        super(protocol);
     }
 
     static private Pattern pattern = Pattern.compile(
@@ -51,7 +52,7 @@ public class ManPowerProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -64,21 +65,18 @@ public class ManPowerProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("manpower");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Alarm message
-        extendedInfo.set("status", parser.group(index++));
+        position.set(Event.KEY_STATUS, parser.group(index++));
         
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -92,7 +90,7 @@ public class ManPowerProtocolDecoder extends BaseProtocolDecoder {
         position.setTime(time.getTime());
 
         // Validity
-        position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
+        position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Latitude
         Double latitude = Double.valueOf(parser.group(index++));
@@ -106,17 +104,8 @@ public class ManPowerProtocolDecoder extends BaseProtocolDecoder {
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
-        // Altitude
-        position.setAltitude(0.0);
-
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
-
-        // Course
-        position.setCourse(0.0);
-
-        // Extended info
-        position.setExtendedInfo(extendedInfo.toString());
 
         return position;
     }

@@ -16,27 +16,29 @@
 package org.traccar.protocol;
 
 import java.nio.charset.Charset;
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class MeitrackProtocolDecoder extends BaseProtocolDecoder {
 
-    public MeitrackProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public MeitrackProtocolDecoder(MeitrackProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -44,6 +46,7 @@ public class MeitrackProtocolDecoder extends BaseProtocolDecoder {
             "\\d+," +                           // Length
             "(\\d+)," +                         // IMEI
             "\\p{XDigit}{3}," +                 // Command
+            "(?:\\d+,)?" +
             "(\\d+)," +                         // Event
             "(-?\\d+\\.\\d+)," +                // Latitude
             "(-?\\d+\\.\\d+)," +                // Longitude
@@ -52,20 +55,24 @@ public class MeitrackProtocolDecoder extends BaseProtocolDecoder {
             "([AV])," +                         // Validity
             "(\\d+)," +                         // Satellites
             "(\\d+)," +                         // GSM Signal
-            "(\\d+)," +                         // Speed
+            "(\\d+\\.?\\d*)," +                 // Speed
             "(\\d+)," +                         // Course
             "(\\d+\\.?\\d*)," +                 // HDOP
             "(-?\\d+)," +                       // Altitude
-            "(\\d+)," +                         // Milage
+            "(\\d+)," +                         // Odometer
             "(\\d+)," +                         // Runtime
             "(\\d+\\|\\d+\\|\\p{XDigit}+\\|\\p{XDigit}+)," + // Cell
             "(\\p{XDigit}+)," +                 // State
-            "(\\p{XDigit}+)\\|" +               // ADC1
+            "(\\p{XDigit}+)?\\|" +              // ADC1
             "(\\p{XDigit}+)?\\|" +              // ADC2
             "(\\p{XDigit}+)?\\|" +              // ADC3
             "(\\p{XDigit}+)\\|" +               // Battery
             "(\\p{XDigit}+)," +                 // Power
-            ".*(\r\n)?");
+            "(?:([^,]+)?," +                    // Event Specific
+            "[^,]*," +                          // Reserved
+            "\\d*," +                           // Protocol
+            "(\\p{XDigit}{4})?)?" +              // Fuel
+            ".*\\*\\p{XDigit}{2}(?:\r\n)?");
 
     private Position decodeRegularMessage(Channel channel, ChannelBuffer buf) {
 
@@ -78,21 +85,19 @@ public class MeitrackProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("meitrack");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Identification
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Event
-        extendedInfo.set("event", parser.group(index++));
+        int event = Integer.valueOf(parser.group(index++));
+        position.set(Event.KEY_EVENT, event);
 
         // Coordinates
         position.setLatitude(Double.valueOf(parser.group(index++)));
@@ -113,74 +118,87 @@ public class MeitrackProtocolDecoder extends BaseProtocolDecoder {
         position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Satellites
-        extendedInfo.set("satellites", parser.group(index++));
+        position.set(Event.KEY_SATELLITES, parser.group(index++));
 
         // GSM Signal
-        extendedInfo.set("gsm", parser.group(index++));
+        position.set(Event.KEY_GSM, parser.group(index++));
 
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)) * 0.539957);
+        position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(parser.group(index++))));
 
         // Course
         position.setCourse(Double.valueOf(parser.group(index++)));
 
         // HDOP
-        extendedInfo.set("hdop", parser.group(index++));
+        position.set(Event.KEY_HDOP, parser.group(index++));
 
         // Altitude
         position.setAltitude(Double.valueOf(parser.group(index++)));
 
         // Other
-        extendedInfo.set("milage", parser.group(index++));
-        extendedInfo.set("runtime", parser.group(index++));
-        extendedInfo.set("cell", parser.group(index++));
-        extendedInfo.set("state", parser.group(index++));
+        position.set(Event.KEY_ODOMETER, parser.group(index++));
+        position.set("runtime", parser.group(index++));
+        position.set(Event.KEY_CELL, parser.group(index++));
+        position.set(Event.KEY_STATUS, parser.group(index++));
         
         // ADC
-        extendedInfo.set("adc1", Integer.parseInt(parser.group(index++), 16));
+        String adc1 = parser.group(index++);
+        if (adc1 != null) {
+            position.set(Event.PREFIX_ADC + 1, Integer.parseInt(adc1, 16));
+        }
         String adc2 = parser.group(index++);
         if (adc2 != null) {
-            extendedInfo.set("adc2", Integer.parseInt(adc2, 16));
+            position.set(Event.PREFIX_ADC + 2, Integer.parseInt(adc2, 16));
         }
         String adc3 = parser.group(index++);
         if (adc3 != null) {
-            extendedInfo.set("adc3", Integer.parseInt(adc3, 16));
+            position.set(Event.PREFIX_ADC + 3, Integer.parseInt(adc3, 16));
         }
-        extendedInfo.set("battery", Integer.parseInt(parser.group(index++), 16));
-        extendedInfo.set("power", Integer.parseInt(parser.group(index++), 16));
-        
-        // Extended info
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.KEY_BATTERY, Integer.parseInt(parser.group(index++), 16));
+        position.set(Event.KEY_POWER, Integer.parseInt(parser.group(index++), 16));
+
+        // Event specific
+        String data = parser.group(index++);
+        if (data != null && !data.isEmpty()) {
+            switch (event) {
+                case 37:
+                    position.set(Event.KEY_RFID, data);
+                    break;
+            }
+        }
+
+        // Fuel
+        String fuel = parser.group(index++);
+        if (fuel != null) {
+            position.set(Event.KEY_FUEL,
+                    Integer.parseInt(fuel.substring(0, 2), 16) + Integer.parseInt(fuel.substring(2), 16) * 0.01);
+        }
 
         return position;
     }
 
     private List<Position> decodeBinaryMessage(Channel channel, ChannelBuffer buf) {
-        List<Position> positions = new LinkedList<Position>();
+        List<Position> positions = new LinkedList<>();
         
         String flag = buf.toString(2, 1, Charset.defaultCharset());
         int index = ChannelBufferTools.find(buf, 0, buf.readableBytes(), ",");
         
         // Identification
-        long deviceId;
         String imei = buf.toString(index + 1, 15, Charset.defaultCharset());
-        try {
-            deviceId = getDataManager().getDeviceByImei(imei).getId();
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(imei, channel)) {
             return null;
         }
-        
+
         buf.skipBytes(index + 1 + 15 + 1 + 3 + 1 + 2 + 2 + 4);
         
         while (buf.readableBytes() >= 0x34) {
             
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("meitrack");
-            position.setDeviceId(deviceId);
+            position.setProtocol(getProtocolName());
+            position.setDeviceId(getDeviceId());
             
             // Event
-            extendedInfo.set("event", buf.readUnsignedByte());
+            position.set(Event.KEY_EVENT, buf.readUnsignedByte());
             
             // Location
             position.setLatitude(buf.readInt() * 0.000001);
@@ -193,39 +211,37 @@ public class MeitrackProtocolDecoder extends BaseProtocolDecoder {
             position.setValid(buf.readUnsignedByte() == 1);
 
             // Satellites
-            extendedInfo.set("satellites", buf.readUnsignedByte());
+            position.set(Event.KEY_SATELLITES, buf.readUnsignedByte());
             
             // GSM Signal
-            extendedInfo.set("gsm", buf.readUnsignedByte());
+            position.set(Event.KEY_GSM, buf.readUnsignedByte());
 
             // Speed
-            position.setSpeed(buf.readUnsignedShort() * 0.539957);
+            position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedShort()));
 
             // Course
-            position.setCourse((double) buf.readUnsignedShort());
+            position.setCourse(buf.readUnsignedShort());
 
             // HDOP
-            extendedInfo.set("hdop", buf.readUnsignedShort() * 0.1);
+            position.set(Event.KEY_HDOP, buf.readUnsignedShort() * 0.1);
 
             // Altitude
-            position.setAltitude((double) buf.readUnsignedShort());
+            position.setAltitude(buf.readUnsignedShort());
 
             // Other
-            extendedInfo.set("milage", buf.readUnsignedInt());
-            extendedInfo.set("runtime", buf.readUnsignedInt());
-            extendedInfo.set("cell",
+            position.set(Event.KEY_ODOMETER, buf.readUnsignedInt());
+            position.set("runtime", buf.readUnsignedInt());
+            position.set(Event.KEY_CELL,
                     buf.readUnsignedShort() + "|" + buf.readUnsignedShort() + "|" +
                     buf.readUnsignedShort() + "|" + buf.readUnsignedShort());
-            extendedInfo.set("state", buf.readUnsignedShort());
+            position.set(Event.KEY_STATUS, buf.readUnsignedShort());
         
             // ADC
-            extendedInfo.set("adc1", buf.readUnsignedShort());
-            extendedInfo.set("battery", buf.readUnsignedShort() * 0.01);
-            extendedInfo.set("power", buf.readUnsignedShort());
+            position.set(Event.PREFIX_ADC + 1, buf.readUnsignedShort());
+            position.set(Event.KEY_BATTERY, buf.readUnsignedShort() * 0.01);
+            position.set(Event.KEY_POWER, buf.readUnsignedShort());
             
             buf.readUnsignedInt(); // geo-fence
-            
-            position.setExtendedInfo(extendedInfo.toString());
             positions.add(position);
         }
         
@@ -245,7 +261,7 @@ public class MeitrackProtocolDecoder extends BaseProtocolDecoder {
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
         
         ChannelBuffer buf = (ChannelBuffer) msg;

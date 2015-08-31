@@ -15,24 +15,26 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Stl060ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Stl060ProtocolDecoder(Stl060Protocol protocol) {
+        super(protocol);
     }
 
+    //$1,357804047969310,D001,AP29AW0963,01/01/13,13:24:47,1723.9582N,07834.0945E
+    //,00100,010,0,0,0,0,
+    //0,0008478660,1450,40,34,0,0,0,A
     private static final Pattern pattern = Pattern.compile(
             ".*\\$1," +
             "(\\d+)," +                         // IMEI
@@ -44,17 +46,31 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
             "(\\d{3})(\\d{2})\\.?(\\d+)([EW])," + // Longitude
             "(\\d+\\.?\\d*)," +                 // Speed
             "(\\d+\\.?\\d*)," +                 // Course
-            "(\\d+)," +                         // Milage
+
+            "(?:(\\d+)," +                      // Odometer
             "(\\d+)," +                         // Ignition
-            "(\\d+)," +                         // DIP1
-            "(\\d+)," +                         // DIP2
+            "(\\d+)," +                         // DI1
+            "(\\d+)," +                         // DI2
+            "(\\d+),|" +                        // Fuel
+
+            "([01])," +                         // Charging
+            "([01])," +                         // Ignition
+            "0,0," +                            // Reserved
+            "(\\d+)," +                         // DI
+            "([^,]+)," +                        // RFID
+            "(\\d+)," +                         // Odometer
+            "(\\d+)," +                         // Temperature
             "(\\d+)," +                         // Fuel
+            "([01])," +                         // Accelerometer
+            "([01])," +                         // DO1
+            "([01]),)" +                        // DO2
+
             "([AV])" +                          // Validity
             ".*");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -67,18 +83,15 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("stl060");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Device identification
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
         
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -104,9 +117,6 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
         longitude += Double.valueOf(parser.group(index++) + parser.group(index++)) / 600000;
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
-        
-        // Altitude
-        position.setAltitude(0.0);
 
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
@@ -114,18 +124,33 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
         // Course
         position.setCourse(Double.valueOf(parser.group(index++)));
 
-        // Other
-        extendedInfo.set("milage", Integer.valueOf(parser.group(index++)));
-        extendedInfo.set("ignition", Integer.valueOf(parser.group(index++)));
-        extendedInfo.set("dip1", Integer.valueOf(parser.group(index++)));
-        extendedInfo.set("dip2", Integer.valueOf(parser.group(index++)));
-        extendedInfo.set("fuel", Integer.valueOf(parser.group(index++)));
+        // Old format
+        if (parser.group(index) != null) {
+            position.set(Event.KEY_ODOMETER, Integer.valueOf(parser.group(index++)));
+            position.set(Event.KEY_IGNITION, Integer.valueOf(parser.group(index++)));
+            position.set(Event.KEY_INPUT, Integer.valueOf(parser.group(index++)) + Integer.valueOf(parser.group(index++)) << 1);
+            position.set(Event.KEY_FUEL, Integer.valueOf(parser.group(index++)));
+        } else {
+            index += 5;
+        }
+
+        // New format
+        if (parser.group(index) != null) {
+            position.set(Event.KEY_CHARGE, Integer.valueOf(parser.group(index++)) == 1);
+            position.set(Event.KEY_IGNITION, Integer.valueOf(parser.group(index++)));
+            position.set(Event.KEY_INPUT, Integer.valueOf(parser.group(index++)));
+            position.set(Event.KEY_RFID, parser.group(index++));
+            position.set(Event.KEY_ODOMETER, Integer.valueOf(parser.group(index++)));
+            position.set(Event.PREFIX_TEMP + 1, Integer.valueOf(parser.group(index++)));
+            position.set(Event.KEY_FUEL, Integer.valueOf(parser.group(index++)));
+            position.set("accel", Integer.valueOf(parser.group(index++)) == 1);
+            position.set(Event.KEY_OUTPUT, Integer.valueOf(parser.group(index++)) + Integer.valueOf(parser.group(index++)) << 1);
+        } else {
+            index += 10;
+        }
 
         // Validity
         position.setValid(parser.group(index++).compareTo("A") == 0);
-
-        // Extended info
-        position.setExtendedInfo(extendedInfo.toString());
 
         return position;
     }

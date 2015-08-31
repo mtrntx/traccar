@@ -16,26 +16,22 @@
 package org.traccar.protocol;
 
 import java.nio.charset.Charset;
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
+import org.traccar.helper.BitUtil;
 import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
 
-    public SkypatrolProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
-    }
-
-    private static boolean checkBit(long mask, int bit) {
-        long checkMask = 1 << bit;
-        return (mask & checkMask) == checkMask;
+    public SkypatrolProtocolDecoder(SkypatrolProtocol protocol) {
+        super(protocol);
     }
 
     private static double convertCoordinate(long coordinate) {
@@ -53,7 +49,7 @@ public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -72,53 +68,51 @@ public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
         if (apiNumber == 5 &&
             commandType == 2 &&
             messageType == 1 &&
-            checkBit(mask, 0)) {
+            BitUtil.check(mask, 0)) {
 
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("skypatrol");
+            position.setProtocol(getProtocolName());
 
             // Status code
-            if (checkBit(mask, 1)) {
-                extendedInfo.set("status", buf.readUnsignedInt());
+            if (BitUtil.check(mask, 1)) {
+                position.set(Event.KEY_STATUS, buf.readUnsignedInt());
             }
 
             // Device id
             String id = null;
-            if (checkBit(mask, 23)) {
+            if (BitUtil.check(mask, 23)) {
                 id = buf.toString(buf.readerIndex(), 8, Charset.defaultCharset()).trim();
                 buf.skipBytes(8);
-            } else if (checkBit(mask, 2)) {
+            } else if (BitUtil.check(mask, 2)) {
                 id = buf.toString(buf.readerIndex(), 22, Charset.defaultCharset()).trim();
                 buf.skipBytes(22);
             } else {
                 Log.warning("No device id field");
                 return null;
             }
-            try {
-                position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + id);
+            if (!identify(id, channel)) {
                 return null;
             }
+            position.setDeviceId(getDeviceId());
 
             // IO data
-            if (checkBit(mask, 3)) {
+            if (BitUtil.check(mask, 3)) {
                 buf.readUnsignedShort();
             }
 
             // ADC 1
-            if (checkBit(mask, 4)) {
+            if (BitUtil.check(mask, 4)) {
                 buf.readUnsignedShort();
             }
 
             // ADC 2
-            if (checkBit(mask, 5)) {
+            if (BitUtil.check(mask, 5)) {
                 buf.readUnsignedShort();
             }
 
             // Function category
-            if (checkBit(mask, 7)) {
+            if (BitUtil.check(mask, 7)) {
                 buf.readUnsignedByte();
             }
 
@@ -126,39 +120,39 @@ public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
             time.clear();
 
             // Date
-            if (checkBit(mask, 8)) {
+            if (BitUtil.check(mask, 8)) {
                 time.set(Calendar.DAY_OF_MONTH, buf.readUnsignedByte());
                 time.set(Calendar.MONTH, buf.readUnsignedByte() - 1);
                 time.set(Calendar.YEAR, 2000 + buf.readUnsignedByte());
             }
 
             // GPS status
-            if (checkBit(mask, 9)) {
+            if (BitUtil.check(mask, 9)) {
                 position.setValid(buf.readUnsignedByte() == 1);
             }
 
             // Latitude
-            if (checkBit(mask, 10)) {
+            if (BitUtil.check(mask, 10)) {
                 position.setLatitude(convertCoordinate(buf.readUnsignedInt()));
             }
 
             // Longitude
-            if (checkBit(mask, 11)) {
+            if (BitUtil.check(mask, 11)) {
                 position.setLongitude(convertCoordinate(buf.readUnsignedInt()));
             }
 
             // Speed
-            if (checkBit(mask, 12)) {
+            if (BitUtil.check(mask, 12)) {
                 position.setSpeed(buf.readUnsignedShort() / 10.0);
             }
 
             // Course
-            if (checkBit(mask, 13)) {
+            if (BitUtil.check(mask, 13)) {
                 position.setCourse(buf.readUnsignedShort() / 10.0);
             }
 
             // Time
-            if (checkBit(mask, 14)) {
+            if (BitUtil.check(mask, 14)) {
                 time.set(Calendar.HOUR_OF_DAY, buf.readUnsignedByte());
                 time.set(Calendar.MINUTE, buf.readUnsignedByte());
                 time.set(Calendar.SECOND, buf.readUnsignedByte());
@@ -167,57 +161,54 @@ public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
             position.setTime(time.getTime());
 
             // Altitude
-            if (checkBit(mask, 15)) {
-                position.setAltitude((double) buf.readMedium());
+            if (BitUtil.check(mask, 15)) {
+                position.setAltitude(buf.readMedium());
             }
 
             // Satellites
-            if (checkBit(mask, 16)) {
-                extendedInfo.set("satellites", buf.readUnsignedByte());
+            if (BitUtil.check(mask, 16)) {
+                position.set(Event.KEY_SATELLITES, buf.readUnsignedByte());
             }
 
             // Battery percentage
-            if (checkBit(mask, 17)) {
+            if (BitUtil.check(mask, 17)) {
                 buf.readUnsignedShort();
             }
 
-            // Trip milage
-            if (checkBit(mask, 20)) {
-                extendedInfo.set("trip", buf.readUnsignedInt());
+            // Trip odometer
+            if (BitUtil.check(mask, 20)) {
+                position.set("trip", buf.readUnsignedInt());
             }
 
-            // Milage
-            if (checkBit(mask, 21)) {
-                extendedInfo.set("milage", buf.readUnsignedInt());
+            // Odometer
+            if (BitUtil.check(mask, 21)) {
+                position.set(Event.KEY_ODOMETER, buf.readUnsignedInt());
             }
 
             // Time of message generation
-            if (checkBit(mask, 22)) {
+            if (BitUtil.check(mask, 22)) {
                 buf.skipBytes(6);
             }
 
             // Battery level
-            if (checkBit(mask, 24)) {
-                extendedInfo.set("power", buf.readUnsignedShort() / 1000.0);
+            if (BitUtil.check(mask, 24)) {
+                position.set(Event.KEY_POWER, buf.readUnsignedShort() / 1000.0);
             }
 
             // GPS overspeed
-            if (checkBit(mask, 25)) {
+            if (BitUtil.check(mask, 25)) {
                 buf.skipBytes(18);
             }
 
             // Cell information
-            if (checkBit(mask, 26)) {
+            if (BitUtil.check(mask, 26)) {
                 buf.skipBytes(54);
             }
 
             // Sequence number
-            if (checkBit(mask, 28)) {
-                extendedInfo.set("index", buf.readUnsignedShort());
+            if (BitUtil.check(mask, 28)) {
+                position.set(Event.KEY_INDEX, buf.readUnsignedShort());
             }
-
-            // Extended info
-            position.setExtendedInfo(extendedInfo.toString());
 
             return position;
         }

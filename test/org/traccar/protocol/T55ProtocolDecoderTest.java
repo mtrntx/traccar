@@ -1,17 +1,18 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
 
-public class T55ProtocolDecoderTest {
+public class T55ProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        T55ProtocolDecoder decoder = new T55ProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        T55ProtocolDecoder decoder = new T55ProtocolDecoder(new T55Protocol());
+
+        assertNull(decoder.decode(null, null, "$GPFID,ID123456ABC"));
 
         assertNull(decoder.decode(null, null, "$PGID,359853000144328*0F"));
 
@@ -54,6 +55,15 @@ public class T55ProtocolDecoderTest {
         
         verify(decoder.decode(null, null,
                 "123456789$GPRMC,155708.252,V,4610.1676,N,00606.4586,E,000.0,000.0,060214,,,N*76"));
+        
+        verify(decoder.decode(null, null,
+                "990000561287964,$GPRMC,213516.0,A,4337.216791,N,11611.995877,W,0.0,335.4,181214,,,A * 72"));
+
+        verify(decoder.decode(null, null,
+                "355096030432529$GPGGA,000000.00,3136.599,S,5213.981,W,1,7,2.13,250.00,M,-16.384,M,3550960304325290.0,1"));
+
+        verify(decoder.decode(null, null,
+                "355096030432529$GPGGA,000000.00,3136.628,S,5213.990,W,1,7,2.13,250.00,M,-16.384,M,0.0,1"));
 
     }
 

@@ -1,17 +1,15 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
-import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
+import static org.traccar.helper.DecoderVerifier.verify;
 
-public class Gps103ProtocolDecoderTest {
+public class Gps103ProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        Gps103ProtocolDecoder decoder = new Gps103ProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        Gps103ProtocolDecoder decoder = new Gps103ProtocolDecoder(new Gps103Protocol());
 
         // Log on request
         assertNull(decoder.decode(null, null, "##,imei:359586015829802,A"));
@@ -36,6 +34,9 @@ public class Gps103ProtocolDecoderTest {
         
         verify(decoder.decode(null, null,
                 "imei:359587016817564,tracker,1301251602,,F,080251.000,A,3223.5832,N,11058.9449,W,0.03,"));
+        
+        verify(decoder.decode(null, null,
+                "imei:359587016817564,tracker,1301251602,,F,080251.000,A,3223.5832,N,11058.9449,W,,"));
 
         verify(decoder.decode(null, null,
                 "imei:012497000208821,tracker,1301080525,,F,212511.000,A,2228.5279,S,06855.6328,W,18.62,268.98,"));
@@ -107,6 +108,21 @@ public class Gps103ProtocolDecoderTest {
         
         verify(decoder.decode(null, null,
                 "imei:866989771979791,tracker,140527055653,,F,215653.00,A,5050.33113,N,00336.98783,E,0.066,0"));
+        
+        verify(decoder.decode(null, null,
+                "imei:353552045375005,tracker,150401165832,61.0,F,31.0,A,1050.73696,N,10636.49489,E,8.0,,22.0,"));
+        
+        verify(decoder.decode(null, null,
+                "imei:353552045403597,tracker,150420050648,53.0,F,0.0,A,N,5306.64155,E,00700.77848,0.0,,1.0,;"));
+        
+        verify(decoder.decode(null, null,
+                "imei:353552045403597,tracker,150420051153,53.0,F,0.0,A,5306.64155,N,00700.77848,E,0.0,,1.0,;"));
+        
+        verify(decoder.decode(null, null,
+                "imei:359710047424644,tracker,150506224036,,F,154037.000,A,0335.2785,N,09841.1543,E,3.03,337.54,,0,0,45.16%,,;"));
+        
+        verify(decoder.decode(null, null,
+                "imei:865328023776874,acc off,150619152221,,F,072218.000,A,5439.8489,N,02518.5945,E,0.00,,,1,1,0.0,0.0,23.0,;"));
 
     }
 

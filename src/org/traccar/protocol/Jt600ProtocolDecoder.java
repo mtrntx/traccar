@@ -16,41 +16,40 @@
 package org.traccar.protocol;
 
 import java.nio.charset.Charset;
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Jt600ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Jt600ProtocolDecoder(Jt600Protocol protocol) {
+        super(protocol);
     }
 
-    private Position decodeNormalMessage(ChannelBuffer buf) throws Exception {
+    private Position decodeNormalMessage(ChannelBuffer buf, Channel channel) throws Exception {
 
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("jt600");
+        position.setProtocol(getProtocolName());
 
         buf.readByte(); // header
 
         // Get device by identifier
         String id = Long.valueOf(ChannelBufferTools.readHexString(buf, 10)).toString();
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
-            //return null;
+        if (!identify(id, channel)) {
+            return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Protocol and type
         int version = ChannelBufferTools.readHexInteger(buf, 1);
@@ -88,42 +87,38 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         position.setLongitude(longitude);
 
         // Speed
-        position.setSpeed((double) ChannelBufferTools.readHexInteger(buf, 2));
+        position.setSpeed(ChannelBufferTools.readHexInteger(buf, 2));
 
         // Course
         position.setCourse(buf.readUnsignedByte() * 2.0);
         
         if (version == 1) {
             
-            extendedInfo.set("satellites", buf.readUnsignedByte());
+            position.set(Event.KEY_SATELLITES, buf.readUnsignedByte());
 
             // Power
-            extendedInfo.set("power", buf.readUnsignedByte());
+            position.set(Event.KEY_POWER, buf.readUnsignedByte());
 
             buf.readByte(); // other flags and sensors
 
             // Altitude
-            position.setAltitude((double) buf.readUnsignedShort());
+            position.setAltitude(buf.readUnsignedShort());
 
-            extendedInfo.set("cell", buf.readUnsignedShort());
-            extendedInfo.set("lac", buf.readUnsignedShort());
-            extendedInfo.set("gsm", buf.readUnsignedByte());
+            position.set(Event.KEY_CELL, buf.readUnsignedShort());
+            position.set(Event.KEY_LAC, buf.readUnsignedShort());
+            position.set(Event.KEY_GSM, buf.readUnsignedByte());
 
         } else if (version == 2) {
 
-            position.setAltitude(0.0);
-
             int fuel = buf.readUnsignedByte() << 8;
 
-            extendedInfo.set("status", buf.readUnsignedInt());
-            extendedInfo.set("milage", buf.readUnsignedInt());
+            position.set(Event.KEY_STATUS, buf.readUnsignedInt());
+            position.set(Event.KEY_ODOMETER, buf.readUnsignedInt());
 
             fuel += buf.readUnsignedByte();
-            extendedInfo.set("fuel", fuel);
+            position.set(Event.KEY_FUEL, fuel);
 
         }
-        
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 
@@ -146,7 +141,7 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+)," +                  // Alert Type
             ".*\\)");
 
-    private Position decodeAlertMessage(ChannelBuffer buf) throws Exception {
+    private Position decodeAlertMessage(ChannelBuffer buf, Channel channel) throws Exception {
 
         String message = buf.toString(Charset.defaultCharset());
 
@@ -158,18 +153,15 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("jt600");
-        extendedInfo.set("alert", "true");
+        position.setProtocol(getProtocolName());
+        position.set(Event.KEY_ALARM, true);
         Integer index = 1;
 
         // Get device by identifier
-        String id = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Longitude
         Double longitude = Double.valueOf(parser.group(index++));
@@ -202,20 +194,15 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
         // Course
         position.setCourse(Double.valueOf(parser.group(index++)));
-        
-        // Altitude
-        position.setAltitude(0.0);
 
         // Power
-        extendedInfo.set("power", Double.valueOf(parser.group(index++)));
-
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.KEY_POWER, Double.valueOf(parser.group(index++)));
         return position;
     }
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -223,9 +210,9 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
         // Check message type
         if (first == '$') {
-            return decodeNormalMessage(buf);
+            return decodeNormalMessage(buf, channel);
         } else if (first == '(') {
-            return decodeAlertMessage(buf);
+            return decodeAlertMessage(buf, channel);
         }
 
         return null;

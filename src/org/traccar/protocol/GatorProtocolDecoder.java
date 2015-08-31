@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2013 - 2014 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,22 +15,24 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class GatorProtocolDecoder extends BaseProtocolDecoder {
 
-    public GatorProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public GatorProtocolDecoder(GatorProtocol protocol) {
+        super(protocol);
     }
 
     private static final int PACKET_HEARTBEAT = 0x21;
@@ -47,7 +49,7 @@ public class GatorProtocolDecoder extends BaseProtocolDecoder {
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
         
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -57,7 +59,10 @@ public class GatorProtocolDecoder extends BaseProtocolDecoder {
         buf.readUnsignedShort(); // length
 
         // Pseudo IP address
-        String id = String.valueOf(buf.readUnsignedInt());
+        String id = String.format("%02d%02d%02d%02d",
+                buf.readUnsignedByte(), buf.readUnsignedByte(),
+                buf.readUnsignedByte(), buf.readUnsignedByte());
+        id = id.replaceFirst("^0+(?!$)", "");
         
         if (type == PACKET_POSITION_DATA ||
             type == PACKET_ROLLCALL_RESPONSE ||
@@ -66,15 +71,14 @@ public class GatorProtocolDecoder extends BaseProtocolDecoder {
             
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("gator");
+            position.setProtocol(getProtocolName());
 
             // Identification
-            try {
-                position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + id);
+            if (!identify(id, channel)) {
+                return null;
             }
-            
+            position.setDeviceId(getDeviceId());
+
             // Date and time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
@@ -89,31 +93,28 @@ public class GatorProtocolDecoder extends BaseProtocolDecoder {
             // Location
             position.setLatitude(ChannelBufferTools.readCoordinate(buf));
             position.setLongitude(ChannelBufferTools.readCoordinate(buf));
-            position.setSpeed(ChannelBufferTools.readHexInteger(buf, 4) * 0.539957);
-            position.setCourse((double) ChannelBufferTools.readHexInteger(buf, 4));
-            position.setAltitude(0.0);
+            position.setSpeed(UnitsConverter.knotsFromKph(ChannelBufferTools.readHexInteger(buf, 4)));
+            position.setCourse(ChannelBufferTools.readHexInteger(buf, 4));
 
             // Flags
             int flags = buf.readUnsignedByte();
             position.setValid((flags & 0x80) != 0);
-            extendedInfo.set("satellites", flags & 0x0f);
+            position.set(Event.KEY_SATELLITES, flags & 0x0f);
 
             // Status
-            extendedInfo.set("status", buf.readUnsignedByte());
+            position.set(Event.KEY_STATUS, buf.readUnsignedByte());
 
             // Key switch
-            extendedInfo.set("key", buf.readUnsignedByte());
+            position.set("key", buf.readUnsignedByte());
 
             // Oil
-            extendedInfo.set("oil", buf.readUnsignedShort() / 10.0);
+            position.set("oil", buf.readUnsignedShort() / 10.0);
 
             // Power
-            extendedInfo.set("power", buf.readUnsignedByte() + buf.readUnsignedByte() / 100.0);
+            position.set(Event.KEY_POWER, buf.readUnsignedByte() + buf.readUnsignedByte() / 100.0);
 
-            // Milage
-            extendedInfo.set("milage", buf.readUnsignedInt());
-
-            position.setExtendedInfo(extendedInfo.toString());
+            // Odometer
+            position.set(Event.KEY_ODOMETER, buf.readUnsignedInt());
             return position;
         }
 

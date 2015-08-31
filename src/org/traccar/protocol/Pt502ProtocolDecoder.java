@@ -16,26 +16,28 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Pt502ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Pt502ProtocolDecoder(Pt502Protocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
-            ".*\\$POS," +                       // Data Frame start
+            ".*" +
+            "\\$[A-Z]{3}\\d?," +                // Type
             "(\\d+)," +                         // Id
             "(\\d{2})(\\d{2})(\\d{2})\\.(\\d{3})," + // Time (HHMMSS.SSS)
             "([AV])," +                         // Validity
@@ -45,12 +47,19 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
             "([EW])," +
             "(\\d+\\.\\d+)?," +                 // Speed
             "(\\d+\\.\\d+)?," +                 // Course
-            "(\\d{2})(\\d{2})(\\d{2})," +       // Date
+            "(\\d{2})(\\d{2})(\\d{2}),,," +     // Date
+            "./" +
+            "([01])+," +                        // Input
+            "([01])+/" +                        // Output
+            "([^/]+)/" +                        // ADC
+            "(\\d+)" +                          // Odometer
+            "(?:/([^/]+)?/" +                   // RFID
+            "(\\p{XDigit}{3}))?" +              // State
             ".*");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -58,24 +67,20 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
         // Parse message
         Matcher parser = pattern.matcher(sentence);
         if (!parser.matches()) {
-            Log.info("Parsing error");
             return null;
         }
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("pt502");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
-        String id = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -104,23 +109,16 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
         }
         position.setLongitude(longitude);
 
-        // Altitude
-        position.setAltitude(0.0);
-
         // Speed
         String speed = parser.group(index++);
         if (speed != null) {
             position.setSpeed(Double.valueOf(speed));
-        } else {
-            position.setSpeed(0.0);
         }
 
         // Course
         String course = parser.group(index++);
         if (course != null) {
             position.setCourse(Double.valueOf(course));
-        } else {
-            position.setCourse(0.0);
         }
 
         // Date
@@ -129,8 +127,32 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
         position.setTime(time.getTime());
 
-        // Extended info
-        position.setExtendedInfo(extendedInfo.toString());
+        // IO
+        position.set(Event.KEY_INPUT, parser.group(index++));
+        position.set(Event.KEY_OUTPUT, parser.group(index++));
+
+        // ADC
+        String adc = parser.group(index++);
+        if (adc != null) {
+            String[] values = adc.split(",");
+            for (int i = 0; i < values.length; i++) {
+                position.set(Event.PREFIX_ADC + (i + 1), Integer.parseInt(values[i], 16));
+            }
+        }
+
+        position.set(Event.KEY_ODOMETER, parser.group(index++));
+
+        // Driver
+        position.set(Event.KEY_RFID, parser.group(index++));
+
+        // Other
+        String status = parser.group(index++);
+        if (status != null) {
+            int value = Integer.parseInt(status, 16);
+            position.set(Event.KEY_BATTERY, value >> 8);
+            position.set(Event.KEY_GSM, (value >> 4) & 0xf);
+            position.set(Event.KEY_SATELLITES, value & 0xf);
+        }
 
         return position;
     }

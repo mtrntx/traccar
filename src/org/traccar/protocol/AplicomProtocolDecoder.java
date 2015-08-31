@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2013 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,104 +15,81 @@
  */
 package org.traccar.protocol;
 
+import java.net.SocketAddress;
 import java.util.Date;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.Crc;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class AplicomProtocolDecoder extends BaseProtocolDecoder {
 
-    public AplicomProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public AplicomProtocolDecoder(AplicomProtocol protocol) {
+        super(protocol);
     }
 
     private static final long IMEI_BASE_TC65_V20 = 0x1437207000000L;
     private static final long IMEI_BASE_TC65_V28 = 358244010000000L;
     private static final long IMEI_BASE_TC65I_V11 = 0x14143B4000000L;
 
+    private static boolean validateImei(long imei) {
+        return Crc.luhnChecksum(imei / 10) == imei % 10;
+    }
+
     private static long imeiFromUnitId(long unitId) {
-        if(unitId == 0) {
-            return 0L;
-        } else if(unitId < 0x1000000) {
-            // Assume TC65i.
-            long imei = IMEI_BASE_TC65I_V11 + unitId;
-            if(validateImei(imei)) {
-                return imei;
-            }
-            
-            // No? Maybe it's TC65 v2.8?
-            imei = IMEI_BASE_TC65_V28 + ((unitId + 0xA8180) & 0xFFFFFF);
-            if(validateImei(imei)) {
-                return imei;
-            }
-            
-            // Still no match? How about TC65 v2.0?
-            imei = IMEI_BASE_TC65_V20 + unitId;
-            if(validateImei(imei)) {
-                return imei;
-            }
+
+        if (unitId == 0) {
+
+            return 0;
+
         } else {
-            // Unit ID is full IMEI, just check it.
-            if(validateImei(unitId)) {
-                return unitId;
+
+            // Try TC65i
+            long imei = IMEI_BASE_TC65I_V11 + unitId;
+            if (validateImei(imei)) {
+                return imei;
             }
+            
+            // Try TC65 v2.8
+            imei = IMEI_BASE_TC65_V28 + ((unitId + 0xA8180) & 0xFFFFFF);
+            if (validateImei(imei)) {
+                return imei;
+            }
+            
+            // Try TC65 v2.0
+            imei = IMEI_BASE_TC65_V20 + unitId;
+            if (validateImei(imei)) {
+                return imei;
+            }
+
         }
         
         return unitId;
     }
-    
-    private static boolean validateImei(long imei2) {
 
-        int checksum = 0;
-        long remain = imei2;
-
-        // Iterate through all meaningful digits.
-        for (int i = 0; remain != 0; i++) {
-            // Extract the rightmost digit, that is, compute
-            // imei modulo 10 (or remainder of imei / 10).
-            int digit = (int) (remain % 10);
-
-            // For each even-positioned digit, calculate the value
-            // to be added to sum: Double the digit and then sum up
-            // the digits of the result.
-            // Example: 7 -> 2*7 = 14 -> 1 + 4 = 5
-            if (0 != (i % 2)) {
-                digit = digit * 2;
-                if (digit >= 10) {
-                    digit = digit - 9;
-                }
-            }
-            checksum = checksum + digit;
-
-            // Remove the rightmost digit as it's already processed.
-            remain = remain / 10;
-        }
-
-        // The IMEI is valid if the calculated checksum is dividable by 10.
-        return 0 == (checksum % 10);
-    }
-    
     private static final int DEFAULT_SELECTOR = 0x0002FC;
+
+    private static final int EVENT_DATA = 119;
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
 
         buf.readUnsignedByte(); // marker
         int version = buf.readUnsignedByte();
-        if ((version & 0x80) != 0) {
-            buf.skipBytes(4); // unit id high
-        }
 
-        String imei = String.valueOf(imeiFromUnitId(buf.readUnsignedMedium()));
+        String imei;
+        if ((version & 0x80) != 0) {
+            imei = String.valueOf((buf.readUnsignedInt() << (3 * 8)) | buf.readUnsignedMedium());
+        } else {
+            imei = String.valueOf(imeiFromUnitId(buf.readUnsignedMedium()));
+        }
 
         buf.readUnsignedShort(); // length
 
@@ -124,16 +101,16 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("aplicom");
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        position.setProtocol(getProtocolName());
+        if (!identify(imei, channel)) {
             return null;
         }
 
+        position.setDeviceId(getDeviceId());
+
         // Event
-        extendedInfo.set("event", buf.readUnsignedByte());
+        int event = buf.readUnsignedByte();
+        position.set(Event.KEY_EVENT, event);
         buf.readUnsignedByte();
 
         // Validity
@@ -153,36 +130,33 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
             position.setTime(new Date(buf.readUnsignedInt() * 1000));
             position.setLatitude(buf.readInt() / 1000000.0);
             position.setLongitude(buf.readInt() / 1000000.0);
-            extendedInfo.set("satellites", buf.readUnsignedByte());
+            position.set(Event.KEY_SATELLITES, buf.readUnsignedByte());
         }
 
         // Speed and heading
         if ((selector & 0x0010) != 0) {
-            position.setSpeed(buf.readUnsignedByte() * 0.539957);
+            position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedByte()));
             buf.readUnsignedByte(); // maximum speed
             position.setCourse(buf.readUnsignedByte() * 2.0);
-        } else {
-            position.setSpeed(0.0);
-            position.setCourse(0.0);
         }
 
         // Input
         if ((selector & 0x0040) != 0) {
-            extendedInfo.set("input", buf.readUnsignedByte());
+            position.set(Event.KEY_INPUT, buf.readUnsignedByte());
         }
         
         // ADC
         if ((selector & 0x0020) != 0) {
-            extendedInfo.set("adc1", buf.readUnsignedShort());
-            extendedInfo.set("adc2", buf.readUnsignedShort());
-            extendedInfo.set("adc3", buf.readUnsignedShort());
-            extendedInfo.set("adc4", buf.readUnsignedShort());
+            position.set(Event.PREFIX_ADC + 1, buf.readUnsignedShort());
+            position.set(Event.PREFIX_ADC + 2, buf.readUnsignedShort());
+            position.set(Event.PREFIX_ADC + 3, buf.readUnsignedShort());
+            position.set(Event.PREFIX_ADC + 4, buf.readUnsignedShort());
         }
 
         // Power
         if ((selector & 0x8000) != 0) {
-            extendedInfo.set("power", buf.readUnsignedShort() / 1000.0);
-            extendedInfo.set("battery", buf.readUnsignedShort());
+            position.set(Event.KEY_POWER, buf.readUnsignedShort() / 1000.0);
+            position.set(Event.KEY_BATTERY, buf.readUnsignedShort());
         }
         
         // Pulse rate 1
@@ -199,17 +173,17 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
 
         // Trip 1
         if ((selector & 0x0080) != 0) {
-            extendedInfo.set("trip1", buf.readUnsignedInt());
+            position.set("trip1", buf.readUnsignedInt());
         }
 
         // Trip 2
         if ((selector & 0x0100) != 0) {
-            extendedInfo.set("trip2", buf.readUnsignedInt());
+            position.set("trip2", buf.readUnsignedInt());
         }
 
         // Output
         if ((selector & 0x0040) != 0) {
-            extendedInfo.set("output", buf.readUnsignedByte());
+            position.set(Event.KEY_OUTPUT, buf.readUnsignedByte());
         }
         
         // Button
@@ -224,12 +198,55 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
         
         // Altitude
         if ((selector & 0x0800) != 0) {
-            position.setAltitude((double) buf.readShort());
-        } else {
-            position.setAltitude(0.0);
+            position.setAltitude(buf.readShort());
         }
 
-        position.setExtendedInfo(extendedInfo.toString());
+        // Snapshot counter
+        if ((selector & 0x2000) != 0) {
+            buf.readUnsignedShort();
+        }
+
+        // State flags
+        if ((selector & 0x4000) != 0) {
+            buf.skipBytes(8);
+        }
+
+        // Cell info
+        if ((selector & 0x80000) != 0) {
+            buf.skipBytes(11);
+        }
+
+        // Event specific data
+        if ((selector & 0x1000) != 0) {
+            switch (event) {
+                case 2:
+                case 40:
+                    buf.readUnsignedByte();
+                    break;
+                case 9:
+                    buf.readUnsignedMedium();
+                    break;
+                case 31:
+                case 32:
+                    buf.readUnsignedShort();
+                    break;
+                case 38:
+                    buf.skipBytes(4 * 9);
+                    break;
+                case 113:
+                    buf.readUnsignedInt();
+                    buf.readUnsignedByte();
+                    break;
+                case 121:
+                case 142:
+                    buf.readLong();
+                    break;
+                case 130:
+                    buf.readUnsignedInt(); // incorrect
+                    break;
+            }
+        }
+
         return position;
     }
 

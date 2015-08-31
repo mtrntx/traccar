@@ -1,17 +1,16 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
 
-public class GpsGateProtocolDecoderTest {
+public class GpsGateProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        GpsGateProtocolDecoder decoder = new GpsGateProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        GpsGateProtocolDecoder decoder = new GpsGateProtocolDecoder(new GpsGateProtocol());
 
         assertNull(decoder.decode(null, null, "$FRLIN,,user1,8IVHF*7A"));
         

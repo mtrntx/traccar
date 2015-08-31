@@ -15,15 +15,16 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
 import org.traccar.model.Position;
 
 /**
@@ -35,21 +36,12 @@ import org.traccar.model.Position;
  */
 public class MaxonProtocolDecoder extends BaseProtocolDecoder {
 
-    /**
-     * Device ID
-     */
     private Position position = null;
 
-    /**
-     * Initialize
-     */
-    public MaxonProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public MaxonProtocolDecoder(MaxonProtocol protocol) {
+        super(protocol);
     }
 
-    /**
-     * Regular expressions pattern
-     */
     static private Pattern pattern = Pattern.compile(
             "\\$GPRMC," +
             "(\\d{2})(\\d{2})(\\d{2})\\.(\\d{2})," + // Time (HHMMSS.SSS)
@@ -63,14 +55,10 @@ public class MaxonProtocolDecoder extends BaseProtocolDecoder {
             "(\\d{2})(\\d{2})(\\d{2})" +   // Date (DDMMYY)
             ".+");                         // Other (Checksumm)
 
-    static private Pattern gpfidPattern = Pattern.compile(
-            "\\$GPFID,(\\d+)$");
+    static private Pattern gpfidPattern = Pattern.compile("\\$GPFID,(\\d+)$");
 
-    /**
-     * Decode message"
-     */
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -99,7 +87,7 @@ public class MaxonProtocolDecoder extends BaseProtocolDecoder {
             index += 1; // Skip milliseconds
 
             // Validity
-            position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
+            position.setValid(parser.group(index++).compareTo("A") == 0);
 
             // Latitude
             Double latitude = Double.valueOf(parser.group(index++));
@@ -117,16 +105,12 @@ public class MaxonProtocolDecoder extends BaseProtocolDecoder {
             String speed = parser.group(index++);
             if (speed != null) {
                 position.setSpeed(Double.valueOf(speed));
-            } else {
-                position.setSpeed(0.0);
             }
 
             // Course
             String course = parser.group(index++);
             if (course != null) {
                 position.setCourse(Double.valueOf(course));
-            } else {
-                position.setCourse(0.0);
             }
 
             // Date
@@ -135,20 +119,14 @@ public class MaxonProtocolDecoder extends BaseProtocolDecoder {
             time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
             position.setTime(time.getTime());
 
-            // Altitude
-            position.setAltitude(0.0);
-
         } else if (sentence.contains("$GPFID") && position != null) {
             Matcher parser = gpfidPattern.matcher(sentence);
 
             if (parser.matches()) {
-                String imei = parser.group(1);
-                try {
-                    position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-                } catch(Exception error) {
-                    Log.warning("Unknown device - " + imei);
+                if (!identify(parser.group(1), channel)) {
                     return null;
                 }
+                position.setDeviceId(getDeviceId());
                 return position;
             }
         }

@@ -15,22 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Position;
 
 public class Tr20ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Tr20ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Tr20ProtocolDecoder(Tr20Protocol protocol) {
+        super(protocol);
     }
 
     static private Pattern patternPing = Pattern.compile(
@@ -52,7 +53,7 @@ public class Tr20ProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -77,21 +78,18 @@ public class Tr20ProtocolDecoder extends BaseProtocolDecoder {
 
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("tr20");
+            position.setProtocol(getProtocolName());
 
             Integer index = 1;
 
             // Get device by id
-            String id = parser.group(index++);
-            try {
-                position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + id);
+            if (!identify(parser.group(index++), channel)) {
                 return null;
             }
+            position.setDeviceId(getDeviceId());
 
             // Validity
-            position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
+            position.setValid(parser.group(index++).compareTo("A") == 0);
 
             // Time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -119,16 +117,10 @@ public class Tr20ProtocolDecoder extends BaseProtocolDecoder {
             position.setLongitude(longitude * hemisphere);
 
             // Speed
-            position.setSpeed(Double.valueOf(parser.group(index++)) * 0.539957);
+            position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(parser.group(index++))));
 
             // Course
             position.setCourse(Double.valueOf(parser.group(index++)));
-
-            // Altitude
-            position.setAltitude(0.0);
-
-            // Extended info
-            position.setExtendedInfo(extendedInfo.toString());
 
             return position;
         }

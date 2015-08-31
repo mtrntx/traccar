@@ -15,22 +15,24 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Gt02ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Gt02ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Gt02ProtocolDecoder(Gt02Protocol protocol) {
+        super(protocol);
     }
 
     private String readImei(ChannelBuffer buf) {
@@ -50,7 +52,7 @@ public class Gt02ProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -77,15 +79,14 @@ public class Gt02ProtocolDecoder extends BaseProtocolDecoder {
 
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("gt02");
-            extendedInfo.set("index", index);
+            position.setProtocol(getProtocolName());
+            position.set(Event.KEY_INDEX, index);
 
             // Get device id
-            try {
-                position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei);
+            if (!identify(imei, channel)) {
+                return null;
             }
+            position.setDeviceId(getDeviceId());
 
             // Date and time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -105,10 +106,10 @@ public class Gt02ProtocolDecoder extends BaseProtocolDecoder {
             double longitude = buf.readUnsignedInt() / (60.0 * 30000.0);
 
             // Speed
-            position.setSpeed((double) buf.readUnsignedByte());
+            position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedByte()));
 
             // Course
-            position.setCourse((double) buf.readUnsignedShort());
+            position.setCourse(buf.readUnsignedShort());
 
             buf.skipBytes(3); // reserved
 
@@ -120,9 +121,6 @@ public class Gt02ProtocolDecoder extends BaseProtocolDecoder {
 
             position.setLatitude(latitude);
             position.setLongitude(longitude);
-            position.setAltitude(0.0);
-
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
         }
 

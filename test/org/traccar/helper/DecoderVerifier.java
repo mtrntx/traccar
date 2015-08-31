@@ -3,6 +3,7 @@ package org.traccar.helper;
 import java.util.Date;
 import java.util.List;
 import static org.junit.Assert.*;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class DecoderVerifier {
@@ -11,9 +12,9 @@ public class DecoderVerifier {
         
         assertNotNull(position.getDeviceId());
         
-        assertNotNull(position.getTime());
-        assertTrue(position.getTime().after(new Date(946684800000L))); // 2000 year
-        assertTrue(position.getTime().getTime() < new Date().getTime() + 3600000); // 1 hour from now
+        assertNotNull(position.getFixTime());
+        assertTrue(position.getFixTime().after(new Date(946684800000L))); // 2000 year
+        assertTrue(position.getFixTime().getTime() < new Date().getTime() + 3600000); // 1 hour from now
 
         assertNotNull(position.getValid());
         
@@ -37,7 +38,7 @@ public class DecoderVerifier {
         assertTrue(position.getCourse() >= 0);
         assertTrue(position.getCourse() <= 360);
         
-        assertNotNull(position.getExtendedInfo());
+        assertNotNull(position.getOther());
 
     }
 

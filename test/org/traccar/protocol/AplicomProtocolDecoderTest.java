@@ -1,24 +1,42 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
 import org.jboss.netty.buffer.ChannelBuffers;
-import static org.traccar.helper.DecoderVerifier.verify;
 import org.junit.Test;
 import org.traccar.helper.ChannelBufferTools;
 
-public class AplicomProtocolDecoderTest {
+import static org.junit.Assert.assertNull;
+import static org.traccar.helper.DecoderVerifier.verify;
+
+public class AplicomProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        AplicomProtocolDecoder decoder = new AplicomProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        AplicomProtocolDecoder decoder = new AplicomProtocolDecoder(new AplicomProtocol());
 
-        int[] buf1 = {0x44,0xC2,0x01,0x43,0x72,0x07,0x29,0xD6,0x84,0x00,0x43,0x03,0x1f,0xff,0x71,0x91,0xC0,0x45,0x0e,0xf9,0x06,0x45,0x0e,0xf9,0x06,0x03,0xb2,0x0b,0x80,0x03,0xb2,0x0b,0x80,0x06,0x64,0x65,0xb3,0x87,0x0c,0xe3,0x0f,0x01,0x0c,0xe3,0x0c,0xe3,0x00,0x32,0x00,0x00,0x15,0x20,0x00,0x00,0x00,0x03,0x0a,0xa2,0x00,0x00,0x3b,0x13,0x00,0x00,0x00,0x32,0x03,0x00,0x00,0x0b,0xcb,0x17,0xac,0xff,0x00,0x99,0x00,0x01,0x86,0xa0,0x02};
-        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertArray(buf1))));
+        assertNull(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "44c3014645e8e9bada003e03fff7070055a4f24200000081000000000000000000000000000000000000000000000000000000000000000000000000000000ff00000001000000000000000044c3014645e8e9bada003e03fff77bff55a4f24300000081000000000000000000000000000000000000000000000000000000000000000000000000000000ff00300002000000000000000044c3014645e8e9bada003e03fff7690655a4f24500000081000000000000000000000000000000000000000000000000000000000000000000000000000000ff003000030000000000000000"))));
 
-        int[] buf2 = {0x44,0x01,0x29,0xD6,0x84,0x00,0x2b,0x07,0x00,0xC0,0x45,0x0e,0xf9,0x06,0x45,0x0e,0xf9,0x06,0x03,0xb2,0x0b,0x80,0x03,0xb2,0x0b,0x80,0x06,0x64,0x65,0xb3,0x87,0x0c,0xe3,0x0f,0x01,0x0c,0xe3,0x0c,0xe3,0x00,0x00,0x3b,0x13,0x03,0x00,0x00,0x0b,0xcb,0x17,0xa};
-        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertArray(buf2))));
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "44c3014645e8e9d29a002d0022ff6d00f455893b4d55893b4c027a7e1500189d710800009e0000000000000000000000023300000000000000009d"))));
+        
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "44C20146B710C158DA002100B09F0700C054CA0EA254CA0E9C03BE0BF6015D7069070000142A600000000000000001"))));
+
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "44C20143720729D6840043031fff7191C0450ef906450ef90603b20b8003b20b80066465b3870ce30f010ce30ce3003200001520000000030aa200003b13000000320300000bcb17acff0099000186a002"))));
+
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "440129D684002b0700C0450ef906450ef90603b20b8003b20b80066465b3870ce30f010ce30ce300003b130300000bcb170a"))));
+
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "44c3014645e8e9152e008900b09f7700f4558c07e8558c07e703be0bd8015d6faf0e0000003240000000000000000f4349460107010007558c07e70000000000000002d209df028f05fffe00000000000000002eff13fe11fe1a00011000000000000010ff11ff3cff11008c00080060f41b0043502015000000000000020d0000030d0000040c0000040d0000050c0000050d0000058c"))));
+
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "44c20144563508385a009500b09f7700c0555ea99e555ea9b103bb569f01883ff50b00002a30f000000000000013074349460108010007555ea99e000000000000003f0000ae017605b3ff00000000010000006700d900d500000003000000000000006700d900d500000087002500c4ff0000435020150000000040512001000000000000020d0000030d0000040c0000040d0000050c0000050d0000058c0000060c"))));
+
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "44C20146B710C158DA009500B09F7700C054CA0EA454CA0EA403BE0BF6015D706B070000142A600000000000000002434946010801000754CA0EA4000000000000008400000000000000000000000000000000300000FE00FE0000000000000000000000000000000000000000000000000000000000000000000040502035000000000000020D0000030D0000040C0000040D0000050C0000050D0000058C0000060C"))));
 
     }
 

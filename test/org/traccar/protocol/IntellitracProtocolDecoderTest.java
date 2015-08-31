@@ -1,19 +1,20 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
-import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
+import static org.traccar.helper.DecoderVerifier.verify;
 
-public class IntellitracProtocolDecoderTest {
+public class IntellitracProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        IntellitracProtocolDecoder decoder = new IntellitracProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        IntellitracProtocolDecoder decoder = new IntellitracProtocolDecoder(new IntellitracProtocol());
 
         assertNull(decoder.decode(null, null, "$OK:TRACKING"));
+        
+        verify(decoder.decode(null, null,
+                "101000001,20100304075545,121.64547,25.06200,0,0,61,7,2,1,0,0.046,0.000,20100304075546,0"));
 
         verify(decoder.decode(null, null,
                 "1010000002,20030217132813,121.646060,25.061725,20,157,133,7,0,11,15,0.096,0.000"));

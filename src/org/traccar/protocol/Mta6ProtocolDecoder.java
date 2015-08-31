@@ -16,7 +16,8 @@
 package org.traccar.protocol;
 
 import java.nio.charset.Charset;
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -31,18 +32,18 @@ import org.jboss.netty.handler.codec.http.HttpResponse;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 import org.jboss.netty.handler.codec.http.HttpVersion;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
+import org.traccar.helper.BitUtil;
+import org.traccar.Protocol;
 import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
     
     private boolean simple;
 
-    public Mta6ProtocolDecoder(ServerManager serverManager, boolean simple) {
-        super(serverManager);
+    public Mta6ProtocolDecoder(Protocol protocol, boolean simple) {
+        super(protocol);
         this.simple = simple;
     }
 
@@ -64,11 +65,6 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
         
         response.setContent(ChannelBuffers.wrappedBuffer(begin, end));
         channel.write(response);
-    }
-    
-    private static boolean checkBit(long mask, int bit) {
-        long checkMask = 1 << bit;
-        return (mask & checkMask) == checkMask;
     }
     
     private static class FloatReader {
@@ -118,8 +114,8 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
         
     }
 
-    private List<Position> parseFormatA(ChannelBuffer buf, long deviceId) {
-        List<Position> positions = new LinkedList<Position>();
+    private List<Position> parseFormatA(ChannelBuffer buf) {
+        List<Position> positions = new LinkedList<>();
         
         FloatReader latitudeReader = new FloatReader();
         FloatReader longitudeReader = new FloatReader();
@@ -128,18 +124,18 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
         try {
             while (buf.readable()) {
                 Position position = new Position();
-                position.setDeviceId(deviceId);
-                ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("mta6");
+                position.setDeviceId(getDeviceId());
+                position.setProtocol(getProtocolName());
 
                 short flags = buf.readUnsignedByte();
 
                 // Skip events
                 short event = buf.readUnsignedByte();
-                if (checkBit(event, 7)) {
-                    if (checkBit(event, 6)) {
+                if (BitUtil.check(event, 7)) {
+                    if (BitUtil.check(event, 6)) {
                         buf.skipBytes(8);
                     } else {
-                        while (checkBit(event, 7)) {
+                        while (BitUtil.check(event, 7)) {
                             event = buf.readUnsignedByte();
                         }
                     }
@@ -149,57 +145,54 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
                 position.setLongitude(longitudeReader.readFloat(buf) / Math.PI * 180);
                 position.setTime(timeReader.readTime(buf));
 
-                if (checkBit(flags, 0)) {
+                if (BitUtil.check(flags, 0)) {
                     buf.readUnsignedByte(); // status
                 }
 
-                if (checkBit(flags, 1)) {
-                    position.setAltitude((double) buf.readUnsignedShort());
+                if (BitUtil.check(flags, 1)) {
+                    position.setAltitude(buf.readUnsignedShort());
                 }
 
-                if (checkBit(flags, 2)) {
-                    position.setSpeed((double) (buf.readUnsignedShort() & 0x03ff));
-                    position.setCourse((double) buf.readUnsignedByte());
+                if (BitUtil.check(flags, 2)) {
+                    position.setSpeed(buf.readUnsignedShort() & 0x03ff);
+                    position.setCourse(buf.readUnsignedByte());
                 }
 
-                if (checkBit(flags, 3)) {
-                    extendedInfo.set("milage", buf.readUnsignedShort());
+                if (BitUtil.check(flags, 3)) {
+                    position.set(Event.KEY_ODOMETER, buf.readUnsignedShort());
                 }
 
-                if (checkBit(flags, 4)) {
-                    extendedInfo.set("fuel1", buf.readUnsignedInt());
-                    extendedInfo.set("fuel2", buf.readUnsignedInt());
-                    extendedInfo.set("hours1", buf.readUnsignedShort());
-                    extendedInfo.set("hours2", buf.readUnsignedShort());
+                if (BitUtil.check(flags, 4)) {
+                    position.set(Event.KEY_FUEL, buf.readUnsignedInt() + "|" + buf.readUnsignedInt());
+                    position.set("hours1", buf.readUnsignedShort());
+                    position.set("hours2", buf.readUnsignedShort());
                 }
 
-                if (checkBit(flags, 5)) {
-                    extendedInfo.set("adc1", buf.readUnsignedShort() & 0x03ff);
-                    extendedInfo.set("adc2", buf.readUnsignedShort() & 0x03ff);
-                    extendedInfo.set("adc3", buf.readUnsignedShort() & 0x03ff);
-                    extendedInfo.set("adc4", buf.readUnsignedShort() & 0x03ff);
+                if (BitUtil.check(flags, 5)) {
+                    position.set(Event.PREFIX_ADC + 1, buf.readUnsignedShort() & 0x03ff);
+                    position.set(Event.PREFIX_ADC + 2, buf.readUnsignedShort() & 0x03ff);
+                    position.set(Event.PREFIX_ADC + 3, buf.readUnsignedShort() & 0x03ff);
+                    position.set(Event.PREFIX_ADC + 4, buf.readUnsignedShort() & 0x03ff);
                 }
 
-                if (checkBit(flags, 6)) {
-                    extendedInfo.set("temperature", buf.readByte());
+                if (BitUtil.check(flags, 6)) {
+                    position.set(Event.PREFIX_TEMP + 1, buf.readByte());
                     buf.getUnsignedByte(buf.readerIndex()); // control (>> 4)
-                    extendedInfo.set("sensor", buf.readUnsignedShort() & 0x0fff);
+                    position.set(Event.KEY_INPUT, buf.readUnsignedShort() & 0x0fff);
                     buf.readUnsignedShort(); // old sensor state (& 0x0fff)
                 }
 
-                if (checkBit(flags, 7)) {
-                    extendedInfo.set("battery", buf.getUnsignedByte(buf.readerIndex()) >> 2);
-                    extendedInfo.set("power", buf.readUnsignedShort() & 0x03ff);
+                if (BitUtil.check(flags, 7)) {
+                    position.set(Event.KEY_BATTERY, buf.getUnsignedByte(buf.readerIndex()) >> 2);
+                    position.set(Event.KEY_POWER, buf.readUnsignedShort() & 0x03ff);
                     buf.readByte(); // microcontroller temperature
 
-                    extendedInfo.set("gsm", (buf.getUnsignedByte(buf.readerIndex()) >> 4) & 0x07);
+                    position.set(Event.KEY_GSM, (buf.getUnsignedByte(buf.readerIndex()) >> 4) & 0x07);
 
                     int satellites = buf.readUnsignedByte() & 0x0f;
                     position.setValid(satellites >= 3);
-                    extendedInfo.set("satellites", satellites);
+                    position.set(Event.KEY_SATELLITES, satellites);
                 }
-
-                position.setExtendedInfo(extendedInfo.toString());
                 positions.add(position);
             }
         } catch (IndexOutOfBoundsException error) {
@@ -208,20 +201,20 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
         return positions;
     }
 
-    private Position parseFormatA1(ChannelBuffer buf, long deviceId) {
+    private Position parseFormatA1(ChannelBuffer buf) {
         Position position = new Position();
-        position.setDeviceId(deviceId);
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("mta6");
+        position.setDeviceId(getDeviceId());
+        position.setProtocol(getProtocolName());
 
         short flags = buf.readUnsignedByte();
 
         // Skip events
         short event = buf.readUnsignedByte();
-        if (checkBit(event, 7)) {
-            if (checkBit(event, 6)) {
+        if (BitUtil.check(event, 7)) {
+            if (BitUtil.check(event, 6)) {
                 buf.skipBytes(8);
             } else {
-                while (checkBit(event, 7)) {
+                while (BitUtil.check(event, 7)) {
                     event = buf.readUnsignedByte();
                 }
             }
@@ -233,62 +226,60 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
 
         buf.readUnsignedByte(); // status
 
-        if (checkBit(flags, 0)) {
-            position.setAltitude((double) buf.readUnsignedShort());
-            position.setSpeed((double) buf.readUnsignedByte());
-            position.setCourse((double) buf.readByte());
-            extendedInfo.set("milage", new FloatReader().readFloat(buf));
+        if (BitUtil.check(flags, 0)) {
+            position.setAltitude(buf.readUnsignedShort());
+            position.setSpeed(buf.readUnsignedByte());
+            position.setCourse(buf.readByte());
+            position.set(Event.KEY_ODOMETER, new FloatReader().readFloat(buf));
         }
 
-        if (checkBit(flags, 1)) {
+        if (BitUtil.check(flags, 1)) {
             new FloatReader().readFloat(buf); // fuel consumtion
-            extendedInfo.set("hours", new FloatReader().readFloat(buf));
-            extendedInfo.set("tank", buf.readUnsignedByte() * 0.4);
+            position.set("hours", new FloatReader().readFloat(buf));
+            position.set("tank", buf.readUnsignedByte() * 0.4);
         }
 
-        if (checkBit(flags, 2)) {
-            extendedInfo.set("engine", buf.readUnsignedShort() * 0.125);
-            extendedInfo.set("pedals", buf.readUnsignedByte());
-            extendedInfo.set("temperature", buf.readUnsignedByte() - 40);
-            buf.readUnsignedShort(); // service milage
+        if (BitUtil.check(flags, 2)) {
+            position.set("engine", buf.readUnsignedShort() * 0.125);
+            position.set("pedals", buf.readUnsignedByte());
+            position.set(Event.PREFIX_TEMP + 1, buf.readUnsignedByte() - 40);
+            buf.readUnsignedShort(); // service odometer
         }
 
-        if (checkBit(flags, 3)) {
-            extendedInfo.set("fuel", buf.readUnsignedShort());
-            extendedInfo.set("adc2", buf.readUnsignedShort());
-            extendedInfo.set("adc3", buf.readUnsignedShort());
-            extendedInfo.set("adc4", buf.readUnsignedShort());
+        if (BitUtil.check(flags, 3)) {
+            position.set(Event.KEY_FUEL, buf.readUnsignedShort());
+            position.set(Event.PREFIX_ADC + 2, buf.readUnsignedShort());
+            position.set(Event.PREFIX_ADC + 3, buf.readUnsignedShort());
+            position.set(Event.PREFIX_ADC + 4, buf.readUnsignedShort());
         }
 
-        if (checkBit(flags, 4)) {
-            extendedInfo.set("temperature", buf.readByte());
+        if (BitUtil.check(flags, 4)) {
+            position.set(Event.PREFIX_TEMP + 1, buf.readByte());
             buf.getUnsignedByte(buf.readerIndex()); // control (>> 4)
-            extendedInfo.set("sensor", buf.readUnsignedShort() & 0x0fff);
+            position.set(Event.KEY_INPUT, buf.readUnsignedShort() & 0x0fff);
             buf.readUnsignedShort(); // old sensor state (& 0x0fff)
         }
 
-        if (checkBit(flags, 5)) {
-            extendedInfo.set("battery", buf.getUnsignedByte(buf.readerIndex()) >> 2);
-            extendedInfo.set("power", buf.readUnsignedShort() & 0x03ff);
+        if (BitUtil.check(flags, 5)) {
+            position.set(Event.KEY_BATTERY, buf.getUnsignedByte(buf.readerIndex()) >> 2);
+            position.set(Event.KEY_POWER, buf.readUnsignedShort() & 0x03ff);
             buf.readByte(); // microcontroller temperature
 
-            extendedInfo.set("gsm", buf.getUnsignedByte(buf.readerIndex()) >> 5);
+            position.set(Event.KEY_GSM, buf.getUnsignedByte(buf.readerIndex()) >> 5);
 
             int satellites = buf.readUnsignedByte() & 0x1f;
             position.setValid(satellites >= 3);
-            extendedInfo.set("satellites", satellites);
+            position.set(Event.KEY_SATELLITES, satellites);
         }
         
         // TODO: process other data
 
-        position.setExtendedInfo(extendedInfo.toString());
-        
         return position;
     }
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
         
         HttpRequest request = (HttpRequest) msg;
@@ -300,11 +291,7 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
         buf.skipBytes("id=".length());
         int index = ChannelBufferTools.find(buf, buf.readerIndex(), length, "&");
         String uniqueId = buf.toString(buf.readerIndex(), index - buf.readerIndex(), Charset.defaultCharset());
-        long deviceId;
-        try {
-            deviceId = getDataManager().getDeviceByImei(uniqueId).getId();
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + uniqueId);
+        if (!identify(uniqueId, channel)) {
             return null;
         }
         buf.skipBytes(uniqueId.length());
@@ -327,9 +314,9 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
         // Parse data
         if (packetId == 0x31 || packetId == 0x32 || packetId == 0x36) {
             if (simple) {
-                return parseFormatA1(buf, deviceId);
+                return parseFormatA1(buf);
             } else {
-                return parseFormatA(buf, deviceId);
+                return parseFormatA(buf);
             }
         } //else if (0x34 0x38 0x4F 0x59)
 

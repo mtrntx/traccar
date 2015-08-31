@@ -1,25 +1,25 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import java.nio.ByteOrder;
 import org.jboss.netty.buffer.ChannelBuffers;
-import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
+import org.traccar.helper.ChannelBufferTools;
+import static org.traccar.helper.DecoderVerifier.verify;
 
-public class NavigilProtocolDecoderTest {
+public class NavigilProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        NavigilProtocolDecoder decoder = new NavigilProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        NavigilProtocolDecoder decoder = new NavigilProtocolDecoder(new NavigilProtocol());
 
-        byte[] buf1 = {0x01,0x00,0x43,0x00,0x04,0x00,0x20,0x00,0x00,0x00,(byte)0xf6,0x02,0x03,0x08,0x02,0x00,(byte)0xe7,(byte)0xcd,0x0f,0x51,0x0c,0x00,0x00,0x00,0x3b,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
-        assertNull(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ByteOrder.LITTLE_ENDIAN, buf1)));
+        assertNull(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ByteOrder.LITTLE_ENDIAN, ChannelBufferTools.convertHexString(
+                "01004300040020000000f60203080200e7cd0f510c0000003b00000000000000"))));
 
-        byte[] buf2 = {0x01,0x00,(byte)0xb3,0x00,0x0f,0x00,0x24,0x00,0x00,0x00,(byte)0xf4,(byte)0xa8,0x03,0x08,0x02,0x00,(byte)0xca,0x0c,0x11,0x51,(byte)0xef,(byte)0x88,(byte)0x85,(byte)0xf0,(byte)0xb8,0x2e,0x6d,0x13,0x04,0x00,(byte)0xc0,0x04,0x03,0x00,0x00,0x00};
-        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ByteOrder.LITTLE_ENDIAN, buf2)));
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ByteOrder.LITTLE_ENDIAN, ChannelBufferTools.convertHexString(
+                "0100b3000f0024000000f4a803080200ca0c1151ef8885f0b82e6d130400c00403000000"))));
 
     }
 

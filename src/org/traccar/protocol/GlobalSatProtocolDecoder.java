@@ -15,17 +15,16 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
-import java.util.Properties;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.Context;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class GlobalSatProtocolDecoder extends BaseProtocolDecoder {
@@ -33,23 +32,21 @@ public class GlobalSatProtocolDecoder extends BaseProtocolDecoder {
     private String format0;
     private String format1;
 
-    public GlobalSatProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
-
-        // Initialize format strings
-        format0 = "TSPRXAB27GHKLMnaicz*U!";
-        format1 = "SARY*U!";
-        if (getServerManager() != null) {
-            Properties p = getServerManager().getProperties();
-            if (p.containsKey("globalsat.format0")) {
-                format0 = p.getProperty("globalsat.format0");
-            }
-            if (p.containsKey("globalsat.format1")) {
-                format1 = p.getProperty("globalsat.format1");
-            }
-        }
+    public GlobalSatProtocolDecoder(GlobalSatProtocol protocol) {
+        super(protocol);
+        
+        format0 = Context.getConfig().getString(protocol + ".format0", "TSPRXAB27GHKLMnaicz*U!");
+        format1 = Context.getConfig().getString(protocol + ".format1", "SARY*U!");
     }
-    
+
+    public void setFormat0(String format) {
+        format0 = format;
+    }
+
+    public void setFormat1(String format) {
+        format1 = format;
+    }
+
     private Position decodeOriginal(Channel channel, String sentence) {
 
         // Send acknowledgement
@@ -83,19 +80,17 @@ public class GlobalSatProtocolDecoder extends BaseProtocolDecoder {
 
         // Parse data
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("globalsat");
+        position.setProtocol(getProtocolName());
 
         for (int formatIndex = 0, valueIndex = 1; formatIndex < format.length() && valueIndex < values.length; formatIndex++) {
             String value = values[valueIndex];
 
             switch(format.charAt(formatIndex)) {
                 case 'S':
-                    try {
-                        position.setDeviceId(getDataManager().getDeviceByImei(value).getId());
-                    } catch(Exception error) {
-                        Log.warning("Unknown device - " + value);
+                    if (!identify(value, channel)) {
                         return null;
                     }
+                    position.setDeviceId(getDeviceId());
                     break;
                 case 'A':
                     if (value.isEmpty()) {
@@ -154,16 +149,16 @@ public class GlobalSatProtocolDecoder extends BaseProtocolDecoder {
                     position.setSpeed(Double.valueOf(value));
                     break;
                 case 'I':
-                    position.setSpeed(Double.valueOf(value) * 0.539957);
+                    position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(value)));
                     break;
                 case 'J':
-                    position.setSpeed(Double.valueOf(value) * 0.868976);
+                    position.setSpeed(UnitsConverter.knotsFromMph(Double.valueOf(value)));
                     break;
                 case 'K':
                     position.setCourse(Double.valueOf(value));
                     break;
                 case 'N':
-                    extendedInfo.set("battery", Double.valueOf(value));
+                    position.set(Event.KEY_BATTERY, value);
                     break;
                 default:
                     // Unsupported
@@ -172,8 +167,6 @@ public class GlobalSatProtocolDecoder extends BaseProtocolDecoder {
 
             valueIndex += 1;
         }
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
     
@@ -204,17 +197,14 @@ public class GlobalSatProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("globalsat");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
 
         // Identification
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Validity
         position.setValid(parser.group(index++).compareTo("1") != 0);
@@ -254,18 +244,16 @@ public class GlobalSatProtocolDecoder extends BaseProtocolDecoder {
         position.setCourse(Double.valueOf(parser.group(index++)));
 
         // Satellites
-        extendedInfo.set("satellites", Integer.valueOf(parser.group(index++)));
+        position.set(Event.KEY_SATELLITES, Integer.valueOf(parser.group(index++)));
 
         // HDOP
-        extendedInfo.set("hdop", parser.group(index++));
-
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.KEY_HDOP, parser.group(index++));
         return position;
     }
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;

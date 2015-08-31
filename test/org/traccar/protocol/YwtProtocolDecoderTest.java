@@ -1,17 +1,16 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
 
-public class YwtProtocolDecoderTest {
+public class YwtProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        YwtProtocolDecoder decoder = new YwtProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        YwtProtocolDecoder decoder = new YwtProtocolDecoder(new YwtProtocol());
         
         assertNull(decoder.decode(null, null,
                 "%SN,0417061042:0,0,140117041203,404"));

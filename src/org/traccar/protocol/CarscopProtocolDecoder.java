@@ -15,27 +15,25 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class CarscopProtocolDecoder extends BaseProtocolDecoder {
 
-    private Long deviceId;
-
-    public CarscopProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public CarscopProtocolDecoder(CarscopProtocol protocol) {
+        super(protocol);
     }
 
-    // Very similar to TK103 protocol
     static private Pattern pattern = Pattern.compile(
             "\\*.*" +
             "(\\d{2})(\\d{2})(\\d{2})" + // Time (HHMMSS)
@@ -48,11 +46,11 @@ public class CarscopProtocolDecoder extends BaseProtocolDecoder {
             "(\\d{2})(\\d{2})(\\d{2})" + // Date (YYMMDD)
             "(\\d{3}\\.\\d{2})" +        // Course
             "(\\d{8})" +                 // State
-            "L(\\d{6})");                // Milage
+            "L(\\d{6})");                // Odometer
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -61,13 +59,9 @@ public class CarscopProtocolDecoder extends BaseProtocolDecoder {
         int index = sentence.indexOf("UB05");
         if (index != -1) {
             String imei = sentence.substring(index + 4, index + 4 + 15);
-            try {
-                deviceId = getDataManager().getDeviceByImei(imei).getId();
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei);
-            }
+            identify(imei, channel);
         }
-        if (deviceId == null) {
+        if (!hasDeviceId()) {
             return null;
         }
 
@@ -79,8 +73,8 @@ public class CarscopProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        position.setDeviceId(deviceId);
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("carscop");
+        position.setDeviceId(getDeviceId());
+        position.setProtocol(getProtocolName());
         index = 1;
 
         // Time
@@ -105,9 +99,6 @@ public class CarscopProtocolDecoder extends BaseProtocolDecoder {
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
-        // Altitude
-        position.setAltitude(0.0);
-
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
 
@@ -121,12 +112,10 @@ public class CarscopProtocolDecoder extends BaseProtocolDecoder {
         position.setCourse(Double.valueOf(parser.group(index++)));
         
         // State
-        extendedInfo.set("state", parser.group(index++));
+        position.set(Event.KEY_STATUS, parser.group(index++));
 
-        // Milage
-        extendedInfo.set("milage", Integer.valueOf(parser.group(index++)));
-
-        position.setExtendedInfo(extendedInfo.toString());
+        // Odometer
+        position.set(Event.KEY_ODOMETER, Integer.valueOf(parser.group(index++)));
         return position;
     }
 

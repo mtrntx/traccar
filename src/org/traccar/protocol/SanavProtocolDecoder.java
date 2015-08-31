@@ -15,22 +15,22 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class SanavProtocolDecoder extends BaseProtocolDecoder {
 
-    public SanavProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public SanavProtocolDecoder(SanavProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -50,7 +50,7 @@ public class SanavProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         // Parse message
@@ -62,17 +62,14 @@ public class SanavProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("sanav");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
 
         // Identification
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -97,9 +94,6 @@ public class SanavProtocolDecoder extends BaseProtocolDecoder {
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
-        // Altitude
-        position.setAltitude(0.0);
-
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
 
@@ -107,8 +101,6 @@ public class SanavProtocolDecoder extends BaseProtocolDecoder {
         String course = parser.group(index++);
         if (course != null) {
             position.setCourse(Double.valueOf(course));
-        } else {
-            position.setCourse(0.0);
         }
 
         // Date
@@ -116,8 +108,6 @@ public class SanavProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
         time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
         position.setTime(time.getTime());
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

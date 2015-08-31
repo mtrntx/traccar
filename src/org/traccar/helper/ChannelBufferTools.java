@@ -15,27 +15,33 @@
  */
 package org.traccar.helper;
 
+import java.math.BigInteger;
 import java.util.Formatter;
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.traccar.protocol.IntellitracFrameDecoder;
 
 /**
  * ChannelBuffer helper methods
  */
 public class ChannelBufferTools {
-    
+
+    public static Integer find(ChannelBuffer buf, int start, String subString) {
+        return find(buf, start, buf.readerIndex() + buf.readableBytes(), subString);
+    }
+
     /**
      * Find string in network buffer
      */
     public static Integer find(
             ChannelBuffer buf,
             Integer start,
-            Integer length,
+            Integer finish,
             String subString) {
 
         int index = start;
         boolean match;
 
-        for (; index < length; index++) {
+        for (; index < finish; index++) {
             match = true;
 
             for (int i = 0; i < subString.length(); i++) {
@@ -130,4 +136,29 @@ public class ChannelBufferTools {
         }
         return out;
     }
+
+    /**
+     * Convert hex string to byte array
+     */
+    public static byte[] convertHexString(String in) {
+        int count = in.length() / 2;
+        byte[] out = new byte[count];
+        for (int i = 0; i < count; i++) {
+            out[i] = Integer.valueOf(in.substring(i * 2, (i + 1) * 2), 16).byteValue();
+        }
+        return out;
+    }
+
+    /**
+     * Convert byte array to hex string
+     */
+    public static String convertByteArray(byte[] in) {
+        StringBuilder out = new StringBuilder();
+        Formatter formatter = new Formatter(out);
+        for (byte b : in) {
+            formatter.format("%02x", b);
+        }
+        return out.toString();
+    }
+
 }

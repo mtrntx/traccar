@@ -15,22 +15,22 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class FreedomProtocolDecoder extends BaseProtocolDecoder {
 
-    public FreedomProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public FreedomProtocolDecoder(FreedomProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -45,7 +45,7 @@ public class FreedomProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         // Parse message
@@ -56,18 +56,15 @@ public class FreedomProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("freedom");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
 
         // Identification
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
-        
+        position.setDeviceId(getDeviceId());
+
         // Validity
         position.setValid(true);
 
@@ -95,17 +92,9 @@ public class FreedomProtocolDecoder extends BaseProtocolDecoder {
         longitude += Double.valueOf(parser.group(index++)) / 60;
         if (hemisphere.compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
-        
-        // Altitude
-        position.setAltitude(0.0);
 
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
-
-        // Course
-        position.setCourse(0.0);
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

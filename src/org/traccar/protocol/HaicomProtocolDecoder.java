@@ -15,22 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class HaicomProtocolDecoder extends BaseProtocolDecoder {
 
-    public HaicomProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public HaicomProtocolDecoder(HaicomProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -45,16 +46,16 @@ public class HaicomProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+)," +                   // Speed
             "(\\d+)," +                   // Course
             "(\\d+)," +                   // Status
-            "(\\d+)," +                   // GPRS counting value
-            "(\\d+)," +                   // GPS power saving counting value
+            "(\\d+)?," +                  // GPRS counting value
+            "(\\d+)?," +                  // GPS power saving counting value
             "(\\d+)," +                   // Switch status
             "(\\d+)" +                    // Relay status
-            "[LH]{2}" +                   // Power status
-            "\\#V(\\d+)");                // Battery
+            "(?:[LH]{2})?" +              // Power status
+            "\\#V(\\d+).*");              // Battery
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -67,21 +68,18 @@ public class HaicomProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("haicom");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Firmware version
-        extendedInfo.set("version", parser.group(index++));
+        position.set(Event.KEY_VERSION, parser.group(index++));
         
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -101,13 +99,13 @@ public class HaicomProtocolDecoder extends BaseProtocolDecoder {
         // Latitude
         Double latitude = Double.valueOf(parser.group(index++));
         latitude += Double.valueOf(parser.group(index++)) / 60000;
-        if ((flags & 0x2) == 0) latitude = -latitude;
+        if ((flags & 0x4) == 0) latitude = -latitude;
         position.setLatitude(latitude);
 
         // Longitude
         Double longitude = Double.valueOf(parser.group(index++));
         longitude += Double.valueOf(parser.group(index++)) / 60000;
-        if ((flags & 0x4) == 0) longitude = -longitude;
+        if ((flags & 0x2) == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
         // Speed
@@ -115,20 +113,14 @@ public class HaicomProtocolDecoder extends BaseProtocolDecoder {
 
         // Course
         position.setCourse(Double.valueOf(parser.group(index++)) / 10);
-
-        // Altitude
-        position.setAltitude(0.0);
         
         // Additional data
-        extendedInfo.set("status", parser.group(index++));
-        extendedInfo.set("gprs", parser.group(index++));
-        extendedInfo.set("gps", parser.group(index++));
-        extendedInfo.set("input", parser.group(index++));
-        extendedInfo.set("output", parser.group(index++));
-        extendedInfo.set("battery", Double.valueOf(parser.group(index++)) / 10);
-
-        // Extended info
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.KEY_STATUS, parser.group(index++));
+        position.set(Event.KEY_GSM, parser.group(index++));
+        position.set(Event.KEY_GPS, parser.group(index++));
+        position.set(Event.KEY_INPUT, parser.group(index++));
+        position.set(Event.KEY_OUTPUT, parser.group(index++));
+        position.set(Event.KEY_BATTERY, Double.valueOf(parser.group(index++)) / 10);
 
         return position;
     }

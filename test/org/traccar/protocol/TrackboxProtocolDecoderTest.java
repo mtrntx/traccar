@@ -1,17 +1,16 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
 
-public class TrackboxProtocolDecoderTest {
+public class TrackboxProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        TrackboxProtocolDecoder decoder = new TrackboxProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        TrackboxProtocolDecoder decoder = new TrackboxProtocolDecoder(new TrackboxProtocol());
 
         assertNull(decoder.decode(null, null, "a=connect&v=11&i=111111111111111"));
 

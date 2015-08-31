@@ -15,24 +15,26 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.ChannelBufferTools;
 import org.traccar.helper.Crc;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class KhdProtocolDecoder extends BaseProtocolDecoder {
 
-    public KhdProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public KhdProtocolDecoder(KhdProtocol protocol) {
+        super(protocol);
     }
 
     private String readSerialNumber(ChannelBuffer buf) {
@@ -41,7 +43,7 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
         int b3 = buf.readUnsignedByte(); if (b3 > 0x80) b3 -= 0x80;
         int b4 = buf.readUnsignedByte();
         String serialNumber = String.format("%02d%02d%02d%02d", b1, b2, b3, b4);
-        return String.valueOf(Integer.valueOf(serialNumber));
+        return String.valueOf(Long.valueOf(serialNumber));
     }
 
     private static final int MSG_LOGIN = 0xB1;
@@ -55,7 +57,7 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -73,16 +75,14 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
 
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("khd");
+            position.setProtocol(getProtocolName());
 
             // Device identification
-            String id = readSerialNumber(buf);
-            try {
-                position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + id);
+            if (!identify(readSerialNumber(buf), channel)) {
+                return null;
             }
-            
+            position.setDeviceId(getDeviceId());
+
             // Date and time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
@@ -97,9 +97,8 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
             // Location
             position.setLatitude(ChannelBufferTools.readCoordinate(buf));
             position.setLongitude(ChannelBufferTools.readCoordinate(buf));
-            position.setSpeed(ChannelBufferTools.readHexInteger(buf, 4) * 0.539957);
-            position.setCourse((double) ChannelBufferTools.readHexInteger(buf, 4));
-            position.setAltitude(0.0);
+            position.setSpeed(UnitsConverter.knotsFromKph(ChannelBufferTools.readHexInteger(buf, 4)));
+            position.setCourse(ChannelBufferTools.readHexInteger(buf, 4));
 
             // Flags
             int flags = buf.readUnsignedByte();
@@ -111,8 +110,8 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
 
             } else {
 
-                // Milage
-                extendedInfo.set("milage", buf.readUnsignedMedium());
+                // Odometer
+                position.set(Event.KEY_ODOMETER, buf.readUnsignedMedium());
             
                 // Status
                 buf.skipBytes(4);
@@ -123,8 +122,6 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
             }
             
             // TODO: parse extra data
-
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
         }
 
@@ -133,14 +130,14 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
             buf.skipBytes(4); // serial number
             buf.readByte(); // reserved
             
-            ChannelBuffer response = ChannelBuffers.directBuffer(10);
+            ChannelBuffer response = ChannelBuffers.dynamicBuffer();
             response.writeByte(0x29); response.writeByte(0x29); // header
             response.writeByte(MSG_CONFIRMATION);
             response.writeShort(5); // size
             response.writeByte(buf.readUnsignedByte());
             response.writeByte(type);
             response.writeByte(0); // reserved
-            response.writeByte(Crc.xorChecksum(response.toByteBuffer(0, 8)));
+            response.writeByte(Crc.xorChecksum(response.toByteBuffer()));
             response.writeByte(0x0D); // ending
             channel.write(response);
 

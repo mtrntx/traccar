@@ -15,25 +15,21 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
 import java.util.Date;
-import java.util.TimeZone;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.Crc;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class EelinkProtocolDecoder extends BaseProtocolDecoder {
 
-    public EelinkProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public EelinkProtocolDecoder(EelinkProtocol protocol) {
+        super(protocol);
     }
 
     private String readImei(ChannelBuffer buf) {
@@ -57,9 +53,7 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
     private static final int MSG_OBD = 0x07;
     private static final int MSG_INTERACTIVE = 0x80;
     private static final int MSG_DATA = 0x81;
-    
-    private Long deviceId;
-    
+
     private void sendResponse(Channel channel, int type, int index) {
         if (channel != null) {
             ChannelBuffer response = ChannelBuffers.buffer(7);
@@ -73,7 +67,7 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -88,49 +82,42 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
         }
         
         if (type == MSG_LOGIN) {
-            String imei = ChannelBufferTools.readHexString(buf, 16).substring(1);
-            try {
-                deviceId = getDataManager().getDeviceByImei(imei).getId();
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei);
-            }
+            identify(ChannelBufferTools.readHexString(buf, 16).substring(1), channel);
         }
         
-        else if (type == MSG_GPS ||
+        else if (hasDeviceId() &&
+                (type == MSG_GPS ||
                  type == MSG_ALARM ||
                  type == MSG_STATE ||
-                 type == MSG_SMS) {
+                 type == MSG_SMS)) {
             
             // Create new position
             Position position = new Position();
-            position.setDeviceId(deviceId);
+            position.setDeviceId(getDeviceId());
             
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("eelink");
-            extendedInfo.set("index", index);
+            position.setProtocol(getProtocolName());
+            position.set(Event.KEY_INDEX, index);
             
             // Location
             position.setTime(new Date(buf.readUnsignedInt() * 1000));
             position.setLatitude(buf.readInt() / 1800000.0);
             position.setLongitude(buf.readInt() / 1800000.0);
-            position.setSpeed(buf.readUnsignedByte() * 0.539957);
-            position.setCourse((double) buf.readUnsignedShort());
-            position.setAltitude(0.0);
+            position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedByte()));
+            position.setCourse(buf.readUnsignedShort());
             
             // Cell
-            extendedInfo.set("cell", ChannelBufferTools.readHexString(buf, 18));
+            position.set(Event.KEY_CELL, ChannelBufferTools.readHexString(buf, 18));
             
             // Validity
             position.setValid((buf.readUnsignedByte() & 0x01) != 0);
             
             if (type == MSG_ALARM) {
-                extendedInfo.set("alarm", buf.readUnsignedByte());
+                position.set(Event.KEY_ALARM, buf.readUnsignedByte());
             }
             
             if (type == MSG_STATE) {
-                extendedInfo.set("status", buf.readUnsignedByte());
+                position.set(Event.KEY_STATUS, buf.readUnsignedByte());
             }
-            
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
         }
 
@@ -147,7 +134,7 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
             // Create new position
             Position position = new Position();
             ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("gt02");
-            extendedInfo.set("index", index);
+            position.set(Event.KEY_INDEX, index);
 
             // Get device id
             try {
@@ -174,10 +161,10 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
             double longitude = buf.readUnsignedInt() / (60.0 * 30000.0);
 
             // Speed
-            position.setSpeed((double) buf.readUnsignedByte());
+            position.setSpeed(buf.readUnsignedByte());
 
             // Course
-            position.setCourse((double) buf.readUnsignedShort());
+            position.setCourse(buf.readUnsignedShort());
 
             buf.skipBytes(3); // reserved
 
@@ -189,9 +176,6 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
 
             position.setLatitude(latitude);
             position.setLongitude(longitude);
-            position.setAltitude(0.0);
-
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
         }*/
 

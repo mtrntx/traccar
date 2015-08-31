@@ -15,22 +15,24 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class WondexProtocolDecoder extends BaseProtocolDecoder {
 
-    public WondexProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public WondexProtocolDecoder(WondexProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -46,7 +48,7 @@ public class WondexProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+)," +                    // Satellites
             "(\\d+),?" +                   // Event
             "(?:(\\d+\\.\\d+)V,)?" +       // Battery
-            "(\\d+\\.\\d+)?,?" +           // Milage
+            "(\\d+\\.\\d+)?,?" +           // Odometer
             "(\\d+)?,?" +                  // Input
             "(\\d+\\.\\d+)?,?" +           // ADC1
             "(\\d+\\.\\d+)?,?" +           // ADC2
@@ -54,7 +56,7 @@ public class WondexProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         // Parse message
@@ -65,17 +67,14 @@ public class WondexProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("wondex");
+        position.setProtocol(getProtocolName());
         int index = 1;
 
         // Device identifier
-        String id = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -91,35 +90,33 @@ public class WondexProtocolDecoder extends BaseProtocolDecoder {
         // Position data
         position.setLongitude(Double.valueOf(parser.group(index++)));
         position.setLatitude(Double.valueOf(parser.group(index++)));
-        position.setSpeed(Double.valueOf(parser.group(index++)) * 0.539957);
+        position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(parser.group(index++))));
         position.setCourse(Double.valueOf(parser.group(index++)));
         position.setAltitude(Double.valueOf(parser.group(index++)));
 
         // Satellites
         int satellites = Integer.valueOf(parser.group(index++));
         position.setValid(satellites >= 3);
-        extendedInfo.set("satellites", satellites);
+        position.set(Event.KEY_SATELLITES, satellites);
         
         // Event
-        extendedInfo.set("event", parser.group(index++));
+        position.set(Event.KEY_EVENT, parser.group(index++));
         
         // Battery
-        extendedInfo.set("battery", parser.group(index++));
+        position.set(Event.KEY_BATTERY, parser.group(index++));
         
-        // Milage
-        extendedInfo.set("milage", parser.group(index++));
+        // Odometer
+        position.set(Event.KEY_ODOMETER, parser.group(index++));
         
         // Input
-        extendedInfo.set("input", parser.group(index++));
+        position.set(Event.KEY_INPUT, parser.group(index++));
         
         // ADC
-        extendedInfo.set("adc1", parser.group(index++));
-        extendedInfo.set("adc2", parser.group(index++));
+        position.set(Event.PREFIX_ADC + 1, parser.group(index++));
+        position.set(Event.PREFIX_ADC + 2, parser.group(index++));
         
         // Output
-        extendedInfo.set("output", parser.group(index++));
-
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.KEY_OUTPUT, parser.group(index++));
         return position;
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2014 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,26 +15,31 @@
  */
 package org.traccar.protocol;
 
+import java.net.SocketAddress;
 import java.util.Calendar;
 import java.util.TimeZone;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
+import org.traccar.Context;
 import org.traccar.helper.Crc;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
-    private Long deviceId;
+    private boolean forceTimeZone = false;
     private final TimeZone timeZone = TimeZone.getTimeZone("UTC");
 
-    public Gt06ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Gt06ProtocolDecoder(Gt06Protocol protocol) {
+        super(protocol);
+        
+        if (Context.getConfig().hasKey(protocol + ".timezone")) {
+            forceTimeZone = true;
+            timeZone.setRawOffset(Context.getConfig().getInteger(protocol + ".timezone") * 1000);
+        }
     }
 
     private String readImei(ChannelBuffer buf) {
@@ -52,16 +57,22 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
     private static final int MSG_LOGIN = 0x01;
     private static final int MSG_GPS = 0x10;
     private static final int MSG_LBS = 0x11;
-    private static final int MSG_GPS_LBS = 0x12;
+    private static final int MSG_GPS_LBS_1 = 0x12;
+    private static final int MSG_GPS_LBS_2 = 0x22;
     private static final int MSG_STATUS = 0x13;
     private static final int MSG_SATELLITE = 0x14;
     private static final int MSG_STRING = 0x15;
-    private static final int MSG_GPS_LBS_STATUS = 0x16;
+    private static final int MSG_GPS_LBS_STATUS_1 = 0x16;
+    private static final int MSG_GPS_LBS_STATUS_2 = 0x26;
+    private static final int MSG_GPS_LBS_STATUS_3 = 0x27;
     private static final int MSG_LBS_PHONE = 0x17;
     private static final int MSG_LBS_EXTEND = 0x18;
     private static final int MSG_LBS_STATUS = 0x19;
     private static final int MSG_GPS_PHONE = 0x1A;
     private static final int MSG_GPS_LBS_EXTEND = 0x1E;
+    private static final int MSG_COMMAND_0 = 0x80;
+    private static final int MSG_COMMAND_1 = 0x81;
+    private static final int MSG_COMMAND_2 = 0x82;
 
     private static void sendResponse(Channel channel, int type, int index) {
         if (channel != null) {
@@ -78,7 +89,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -88,7 +99,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
         
-        int length = buf.readByte(); // size
+        int length = buf.readUnsignedByte(); // size
         int dataLength = length - 5;
 
         int type = buf.readUnsignedByte();
@@ -101,34 +112,36 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
             // Timezone offset
             if (dataLength > 10) {
                 int extensionBits = buf.readUnsignedShort();
-                int offset = (extensionBits >> 4) * 36000;
+                int hours = (extensionBits >> 4) / 100;
+                int minutes = (extensionBits >> 4) % 100;
+                int offset = (hours * 60 + minutes) * 60;
                 if ((extensionBits & 0x8) != 0) {
                     offset = -offset;
                 }
-                timeZone.setRawOffset(offset);
+                if (!forceTimeZone) {
+                    timeZone.setRawOffset(offset);
+                }
             }
-            
-            try {
-                deviceId = getDataManager().getDeviceByImei(imei).getId();
-                buf.skipBytes(dataLength - 8);
-                sendResponse(channel, type, buf.readUnsignedShort());
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei);
-            }
-            
-        }
 
-        else if (deviceId != null && (
-                 type == MSG_GPS ||
-                 type == MSG_GPS_LBS ||
-                 type == MSG_GPS_LBS_STATUS ||
-                 type == MSG_GPS_PHONE ||
-                 type == MSG_GPS_LBS_EXTEND)) {
+            if (identify(imei, channel)) {
+                buf.skipBytes(buf.readableBytes() - 6);
+                sendResponse(channel, type, buf.readUnsignedShort());
+            }
+
+        } else if (hasDeviceId() && (
+                type == MSG_GPS ||
+                type == MSG_GPS_LBS_1 ||
+                type == MSG_GPS_LBS_2 ||
+                type == MSG_GPS_LBS_STATUS_1 ||
+                type == MSG_GPS_LBS_STATUS_2 ||
+                type == MSG_GPS_LBS_STATUS_3 ||
+                type == MSG_GPS_PHONE ||
+                type == MSG_GPS_LBS_EXTEND)) {
 
             // Create new position
             Position position = new Position();
-            position.setDeviceId(deviceId);
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("gt06");
+            position.setDeviceId(getDeviceId());
+            position.setProtocol(getProtocolName());
 
             // Date and time
             Calendar time = Calendar.getInstance(timeZone);
@@ -143,7 +156,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
             // GPS length and Satellites count
             int gpsLength = buf.readUnsignedByte();
-            extendedInfo.set("satellites", gpsLength & 0xf);
+            position.set(Event.KEY_SATELLITES, gpsLength & 0b0000_1111);
             gpsLength >>= 4;
 
             // Latitude
@@ -153,49 +166,61 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
             double longitude = buf.readUnsignedInt() / (60.0 * 30000.0);
 
             // Speed
-            position.setSpeed(buf.readUnsignedByte() * 0.539957);
+            position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedByte()));
 
             // Course and flags
             int union = buf.readUnsignedShort();
-            position.setCourse((double) (union & 0x03FF));
-            position.setValid((union & 0x1000) != 0);
-            if ((union & 0x0400) == 0) latitude = -latitude;
-            if ((union & 0x0800) != 0) longitude = -longitude;
+            position.setCourse(union & 0b0000_0011_1111_1111);
+            position.setValid((union & 0b0001_0000_0000_0000) != 0);
+            if ((union & 0b0000_0100_0000_0000) == 0) latitude = -latitude;
+            if ((union & 0b0000_1000_0000_0000) != 0) longitude = -longitude;
 
             position.setLatitude(latitude);
             position.setLongitude(longitude);
-            position.setAltitude(0.0);
+            
+            if ((union & 0b0100_0000_0000_0000) != 0) {
+                position.set(Event.KEY_IGNITION, (union & 0b1000_0000_0000_0000) != 0);
+            }
 
             buf.skipBytes(gpsLength - 12); // skip reserved
 
-            if (type == MSG_GPS_LBS || type == MSG_GPS_LBS_STATUS) {
+            if (type == MSG_GPS_LBS_1 || type == MSG_GPS_LBS_2 ||
+                type == MSG_GPS_LBS_STATUS_1 || type == MSG_GPS_LBS_STATUS_2 || type == MSG_GPS_LBS_STATUS_3) {
 
                 int lbsLength = 0;
-                if (type == MSG_GPS_LBS_STATUS) {
+                if (type == MSG_GPS_LBS_STATUS_1 || type == MSG_GPS_LBS_STATUS_2 || type == MSG_GPS_LBS_STATUS_3) {
                     lbsLength = buf.readUnsignedByte();
                 }
 
                 // Cell information
-                extendedInfo.set("mcc", buf.readUnsignedShort());
-                extendedInfo.set("mnc", buf.readUnsignedByte());
-                extendedInfo.set("lac", buf.readUnsignedShort());
-                extendedInfo.set("cell", buf.readUnsignedShort() << 8 + buf.readUnsignedByte());
-                buf.skipBytes(lbsLength - 9);
+                position.set(Event.KEY_MCC, buf.readUnsignedShort());
+                position.set(Event.KEY_MNC, buf.readUnsignedByte());
+                position.set(Event.KEY_LAC, buf.readUnsignedShort());
+                position.set(Event.KEY_CELL, buf.readUnsignedShort() << 8 + buf.readUnsignedByte());
+                if (lbsLength > 0) {
+                    buf.skipBytes(lbsLength - 9);
+                }
 
                 // Status
-                if (type == MSG_GPS_LBS_STATUS) {
-                    extendedInfo.set("alarm", true);
-                    
+                if (type == MSG_GPS_LBS_STATUS_1 || type == MSG_GPS_LBS_STATUS_2 || type == MSG_GPS_LBS_STATUS_3) {
+
+                    position.set(Event.KEY_ALARM, true);
+
                     int flags = buf.readUnsignedByte();
-                    extendedInfo.set("acc", (flags & 0x2) != 0);
+
+                    position.set(Event.KEY_IGNITION, (flags & 0x2) != 0);
                     // TODO parse other flags
 
                     // Voltage
-                    extendedInfo.set("power", buf.readUnsignedByte());
+                    position.set(Event.KEY_POWER, buf.readUnsignedByte());
 
                     // GSM signal
-                    extendedInfo.set("gsm", buf.readUnsignedByte());
+                    position.set(Event.KEY_GSM, buf.readUnsignedByte());
                 }
+            }
+            
+            if (type == MSG_GPS_LBS_1 && buf.readableBytes() == 4 + 6) {
+                position.set(Event.KEY_ODOMETER, buf.readUnsignedInt());
             }
 
             // Index
@@ -203,16 +228,16 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
                 buf.skipBytes(buf.readableBytes() - 6);
             }
             int index = buf.readUnsignedShort();
-            extendedInfo.set("index", index);
+            position.set(Event.KEY_INDEX, index);
             sendResponse(channel, type, index);
-
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
         }
-
+        
         else {
             buf.skipBytes(dataLength);
-            sendResponse(channel, type, buf.readUnsignedShort());
+            if (type != MSG_COMMAND_0 && type != MSG_COMMAND_1 && type != MSG_COMMAND_2) {
+                sendResponse(channel, type, buf.readUnsignedShort());
+            }
         }
 
         return null;

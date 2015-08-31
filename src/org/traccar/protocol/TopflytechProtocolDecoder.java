@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2013 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,27 +15,25 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class TopflytechProtocolDecoder extends BaseProtocolDecoder {
 
-    private Long deviceId;
-
-    public TopflytechProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public TopflytechProtocolDecoder(TopflytechProtocol protocol) {
+        super(protocol);
     }
 
-    static private Pattern pattern = Pattern.compile(
+    static private final Pattern pattern = Pattern.compile(
             "\\(" +
             "(\\d+)" +                     // IMEI
             ".*" +
@@ -51,7 +49,7 @@ public class TopflytechProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -64,17 +62,14 @@ public class TopflytechProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("topflytech");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
 
         // Identifier
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -88,7 +83,7 @@ public class TopflytechProtocolDecoder extends BaseProtocolDecoder {
         position.setTime(time.getTime());
 
         // Validity
-        position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
+        position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Latitude
         Double latitude = Double.valueOf(parser.group(index++));
@@ -107,11 +102,6 @@ public class TopflytechProtocolDecoder extends BaseProtocolDecoder {
 
         // Course
         position.setCourse(Double.valueOf(parser.group(index++)));
-
-        // Altitude
-        position.setAltitude(0.0);
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

@@ -16,23 +16,24 @@
 package org.traccar.protocol;
 
 import java.nio.charset.Charset;
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Xt7ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Xt7ProtocolDecoder(Xt7Protocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -58,7 +59,7 @@ public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
         
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -67,17 +68,15 @@ public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("xt7");
+        position.setProtocol(getProtocolName());
         
         // Get device by id
         String id = buf.readBytes(16).toString(Charset.defaultCharset()).trim();
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(id, channel)) {
             return null;
         }
-        
+        position.setDeviceId(getDeviceId());
+
         buf.readUnsignedByte(); // command
         int length = buf.readUnsignedByte();
         
@@ -120,12 +119,7 @@ public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
         String course = parser.group(index++);
         if (course != null) {
             position.setCourse(Double.valueOf(course));
-        } else {
-            position.setCourse(0.0);
         }
-        
-        // Altitude
-        position.setAltitude(0.0);
 
         // Date
         time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
@@ -134,31 +128,28 @@ public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
         position.setTime(time.getTime());
 
         // IMSI
-        extendedInfo.set("imsi", parser.group(index++));
+        position.set("imsi", parser.group(index++));
 
         // Cell
-        extendedInfo.set("cell", parser.group(index++));
+        position.set(Event.KEY_CELL, parser.group(index++));
 
         // GSM signal quality
-        extendedInfo.set("gsm", parser.group(index++));
+        position.set(Event.KEY_GSM, parser.group(index++));
         
         // Battery
-        extendedInfo.set("power", Double.valueOf(parser.group(index++)));
+        position.set(Event.KEY_POWER, Double.valueOf(parser.group(index++)));
         
         // Flags
-        extendedInfo.set("flags", parser.group(index++));
+        position.set(Event.KEY_FLAGS, parser.group(index++));
 
         // Sensors
-        extendedInfo.set("sensors", parser.group(index++));
+        position.set(Event.KEY_INPUT, parser.group(index++));
 
         // Fuel
-        extendedInfo.set("fuel", parser.group(index++));
+        position.set(Event.KEY_FUEL, parser.group(index++));
 
         // Alarm
-        extendedInfo.set("alarm", parser.group(index++));
-
-        // Extended info
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.KEY_ALARM, parser.group(index++));
 
         return position;
     }

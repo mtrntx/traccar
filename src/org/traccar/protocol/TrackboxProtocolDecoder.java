@@ -15,24 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class TrackboxProtocolDecoder extends BaseProtocolDecoder {
     
-    private Long deviceId;
-
-    public TrackboxProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public TrackboxProtocolDecoder(TrackboxProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -56,18 +55,15 @@ public class TrackboxProtocolDecoder extends BaseProtocolDecoder {
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
 
         if (sentence.startsWith("a=connect")) {
             String id = sentence.substring(sentence.indexOf("i=") + 2);
-            try {
-                deviceId = getDataManager().getDeviceByImei(id).getId();
+            if (identify(id, channel)) {
                 sendResponse(channel);
-            } catch(Exception error) {
-              Log.warning("Unknown device - " + id);
             }
         }
         
@@ -81,8 +77,8 @@ public class TrackboxProtocolDecoder extends BaseProtocolDecoder {
 
             // Create new position
             Position position = new Position();
-            position.setDeviceId(deviceId);
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("trackbox");
+            position.setDeviceId(getDeviceId());
+            position.setProtocol(getProtocolName());
 
             Integer index = 1;
 
@@ -107,14 +103,14 @@ public class TrackboxProtocolDecoder extends BaseProtocolDecoder {
             position.setLongitude(longitude);
             
             // HDOP
-            extendedInfo.set("hdop", parser.group(index++));
+            position.set(Event.KEY_HDOP, parser.group(index++));
 
             // Altitude
             position.setAltitude(Double.valueOf(parser.group(index++)));
             
             // Validity
             int fix = Integer.valueOf(parser.group(index++));
-            extendedInfo.set("fix", fix);
+            position.set(Event.KEY_GPS, fix);
             position.setValid(fix > 0);
 
             // Course
@@ -131,10 +127,7 @@ public class TrackboxProtocolDecoder extends BaseProtocolDecoder {
             position.setTime(time.getTime());
 
             // Satellites
-            extendedInfo.set("satellites", parser.group(index++));
-
-            // Extended info
-            position.setExtendedInfo(extendedInfo.toString());
+            position.set(Event.KEY_SATELLITES, parser.group(index++));
 
             return position;
         }

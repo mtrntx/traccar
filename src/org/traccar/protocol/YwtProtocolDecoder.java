@@ -15,22 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class YwtProtocolDecoder extends BaseProtocolDecoder {
 
-    public YwtProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public YwtProtocolDecoder(YwtProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -53,7 +54,7 @@ public class YwtProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -81,18 +82,15 @@ public class YwtProtocolDecoder extends BaseProtocolDecoder {
         
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("ywt");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
         String type = parser.group(index++);
 
         // Device
-        String id = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
         
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -121,8 +119,6 @@ public class YwtProtocolDecoder extends BaseProtocolDecoder {
         String altitude = parser.group(index++);
         if (altitude != null) {
             position.setAltitude(Double.valueOf(altitude));
-        } else {
-            position.setAltitude(0.0);
         }
 
         // Speed
@@ -134,13 +130,13 @@ public class YwtProtocolDecoder extends BaseProtocolDecoder {
         // Satellites
         int satellites = Integer.valueOf(parser.group(index++));
         position.setValid(satellites >= 3);
-        extendedInfo.set("satellites", satellites);
+        position.set(Event.KEY_SATELLITES, satellites);
         
         // Report identifier
         String reportId = parser.group(index++);
         
         // Status
-        extendedInfo.set("status", parser.group(index++));
+        position.set(Event.KEY_STATUS, parser.group(index++));
 
         // Send response
         if (type.equals("KP") || type.equals("EP") || type.equals("EP")) {
@@ -148,8 +144,6 @@ public class YwtProtocolDecoder extends BaseProtocolDecoder {
                 channel.write("%AT+" + type + "=" + reportId + "\r\n");
             }
         }
-        
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

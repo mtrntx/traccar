@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2013 - 2014 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,33 +17,28 @@ package org.traccar.protocol;
 
 import java.nio.ByteOrder;
 import java.nio.charset.Charset;
-import java.sql.ResultSet;
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar;    
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Properties;
 import java.util.TimeZone;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.AdvancedConnection;
 import org.traccar.helper.Crc;
 import org.traccar.helper.Log;
-import org.traccar.helper.NamedParameterStatement;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class ApelProtocolDecoder extends BaseProtocolDecoder {
 
-    private long deviceId;
     private long lastIndex;
     private long newIndex;
 
-    public ApelProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public ApelProtocolDecoder(ApelProtocol protocol) {
+        super(protocol);
     }
 
     /*
@@ -76,24 +71,6 @@ public class ApelProtocolDecoder extends BaseProtocolDecoder {
 
     private static final String HEX_CHARS = "0123456789ABCDEF";
 
-    private void loadLastIndex() {
-        try {
-            Properties p = getServerManager().getProperties();
-            if (p.contains("database.selectLastIndex")) {
-                AdvancedConnection connection = new AdvancedConnection(
-                        p.getProperty("database.url"), p.getProperty("database.user"), p.getProperty("database.password"));
-                NamedParameterStatement queryLastIndex = new NamedParameterStatement(connection, p.getProperty("database.selectLastIndex"));
-                queryLastIndex.prepare();
-                queryLastIndex.setLong("device_id", deviceId);
-                ResultSet result = queryLastIndex.executeQuery();
-                if (result.next()) {
-                    lastIndex = result.getLong(1);
-                }
-            }
-        } catch(Exception error) {
-        }
-    }
-
     private void sendSimpleMessage(Channel channel, short type) {
         ChannelBuffer request = ChannelBuffers.directBuffer(ByteOrder.LITTLE_ENDIAN, 8);
         request.writeShort(type);
@@ -118,7 +95,7 @@ public class ApelProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -141,13 +118,7 @@ public class ApelProtocolDecoder extends BaseProtocolDecoder {
             int length = buf.readUnsignedShort();
             buf.skipBytes(length);
             length = buf.readUnsignedShort();
-            String imei = buf.readBytes(length).toString(Charset.defaultCharset());
-            try {
-                deviceId = getDataManager().getDeviceByImei(imei).getId();
-                loadLastIndex();
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei + " (id - " + id + ")");
-            }
+            identify(buf.readBytes(length).toString(Charset.defaultCharset()), channel);
         }
         
         else if (type == MSG_TYPE_LAST_LOG_INDEX) {
@@ -159,8 +130,8 @@ public class ApelProtocolDecoder extends BaseProtocolDecoder {
         }
 
         // Position
-        else if (deviceId != 0 && (type == MSG_TYPE_CURRENT_GPS_DATA || type == MSG_TYPE_STATE_FULL_INFO_T104 || type == MSG_TYPE_LOG_RECORDS)) {
-            List<Position> positions = new LinkedList<Position>();
+        else if (hasDeviceId() && (type == MSG_TYPE_CURRENT_GPS_DATA || type == MSG_TYPE_STATE_FULL_INFO_T104 || type == MSG_TYPE_LOG_RECORDS)) {
+            List<Position> positions = new LinkedList<>();
 
             int recordCount = 1;
             if (type == MSG_TYPE_LOG_RECORDS) {
@@ -169,15 +140,15 @@ public class ApelProtocolDecoder extends BaseProtocolDecoder {
 
             for (int j = 0; j < recordCount; j++) {
                 Position position = new Position();
-                ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("apel");
-                position.setDeviceId(deviceId);
+                position.setProtocol(getProtocolName());
+                position.setDeviceId(getDeviceId());
 
                 // Message index
                 int subtype = type;
                 if (type == MSG_TYPE_LOG_RECORDS) {
-                    extendedInfo.set("archive", true);
+                    position.set(Event.KEY_ARCHIVE, true);
                     lastIndex = buf.readUnsignedInt() + 1;
-                    extendedInfo.set("index", lastIndex);
+                    position.set(Event.KEY_INDEX, lastIndex);
 
                     subtype = buf.readUnsignedShort();
                     if (subtype != MSG_TYPE_CURRENT_GPS_DATA && subtype != MSG_TYPE_STATE_FULL_INFO_T104) {
@@ -203,51 +174,48 @@ public class ApelProtocolDecoder extends BaseProtocolDecoder {
                 if (subtype == MSG_TYPE_STATE_FULL_INFO_T104) {
                     int speed = buf.readUnsignedByte();
                     position.setValid(speed != 255);
-                    position.setSpeed(speed * 0.539957);
-                    extendedInfo.set("hdop", buf.readByte());
+                    position.setSpeed(UnitsConverter.knotsFromKph(speed));
+                    position.set(Event.KEY_HDOP, buf.readByte());
                 } else {
                     int speed = buf.readShort();
                     position.setValid(speed != -1);
-                    position.setSpeed(speed / 100.0 * 0.539957);
+                    position.setSpeed(UnitsConverter.knotsFromKph(speed / 100.0));
                 }
 
                 // Course
                 position.setCourse(buf.readShort() / 100.0);
 
                 // Altitude
-                position.setAltitude((double) buf.readShort());
+                position.setAltitude(buf.readShort());
 
                 if (subtype == MSG_TYPE_STATE_FULL_INFO_T104) {
 
                     // Satellites
-                    extendedInfo.set("satellites", buf.readUnsignedByte());
+                    position.set(Event.KEY_SATELLITES, buf.readUnsignedByte());
                     
                     // Cell signal
-                    extendedInfo.set("gsm", buf.readUnsignedByte());
+                    position.set(Event.KEY_GSM, buf.readUnsignedByte());
 
                     // Event type
-                    extendedInfo.set("event", buf.readUnsignedShort());
+                    position.set(Event.KEY_EVENT, buf.readUnsignedShort());
 
-                    // Milage
-                    extendedInfo.set("milage", buf.readUnsignedInt());
+                    // Odometer
+                    position.set(Event.KEY_ODOMETER, buf.readUnsignedInt());
 
                     // Input/Output
-                    extendedInfo.set("input", buf.readUnsignedByte());
-                    extendedInfo.set("output", buf.readUnsignedByte());
+                    position.set(Event.KEY_INPUT, buf.readUnsignedByte());
+                    position.set(Event.KEY_OUTPUT, buf.readUnsignedByte());
                     
                     // Analog sensors
                     for (int i = 1; i <= 8; i++) {
-                        extendedInfo.set("adc" + i, buf.readUnsignedShort());
+                        position.set(Event.PREFIX_ADC + i, buf.readUnsignedShort());
                     }
                     
                     // Counters
-                    extendedInfo.set("c0", buf.readUnsignedInt());
-                    extendedInfo.set("c1", buf.readUnsignedInt());
-                    extendedInfo.set("c2", buf.readUnsignedInt());
+                    position.set(Event.PREFIX_COUNT + 1, buf.readUnsignedInt());
+                    position.set(Event.PREFIX_COUNT + 2, buf.readUnsignedInt());
+                    position.set(Event.PREFIX_COUNT + 3, buf.readUnsignedInt());
                 }
-
-                // Extended info
-                position.setExtendedInfo(extendedInfo.toString());
 
                 positions.add(position);
             }

@@ -15,30 +15,25 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.Crc;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class GpsGateProtocolDecoder extends BaseProtocolDecoder {
 
-    private Long deviceId;
-
-    public GpsGateProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public GpsGateProtocolDecoder(GpsGateProtocol protocol) {
+        super(protocol);
     }
 
-    /**
-     * Regular expressions pattern
-     */
     private static final Pattern pattern = Pattern.compile(
             "\\$GPRMC," +
             "(\\d{2})(\\d{2})(\\d{2})\\.?(\\d+)?," + // Time (HHMMSS.SSS)
@@ -60,7 +55,7 @@ public class GpsGateProtocolDecoder extends BaseProtocolDecoder {
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -73,11 +68,11 @@ public class GpsGateProtocolDecoder extends BaseProtocolDecoder {
                 int endIndex = sentence.indexOf(',', beginIndex);
                 if (endIndex != -1) {
                     String imei = sentence.substring(beginIndex, endIndex);
-                    try {
-                        deviceId = getDataManager().getDeviceByImei(imei).getId();
-                        send(channel, "$FRSES," + channel.getId());
-                    } catch(Exception error) {
-                        Log.warning("Unknown device - " + imei);
+                    if (identify(imei, channel)) {
+                        if (channel != null) {
+                            send(channel, "$FRSES," + channel.getId());
+                        }
+                    } else {
                         send(channel, "$FRERR,AuthError,Unknown device");
                     }
                 } else {
@@ -94,7 +89,7 @@ public class GpsGateProtocolDecoder extends BaseProtocolDecoder {
         }
 
         // Process data
-        else if (sentence.startsWith("$GPRMC,") && deviceId != null) {
+        else if (sentence.startsWith("$GPRMC,") && hasDeviceId()) {
 
             // Parse message
             Matcher parser = pattern.matcher(sentence);
@@ -104,8 +99,8 @@ public class GpsGateProtocolDecoder extends BaseProtocolDecoder {
 
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("gpsgate");
-            position.setDeviceId(deviceId);
+            position.setProtocol(getProtocolName());
+            position.setDeviceId(getDeviceId());
 
             Integer index = 1;
 
@@ -136,16 +131,12 @@ public class GpsGateProtocolDecoder extends BaseProtocolDecoder {
             String speed = parser.group(index++);
             if (speed != null) {
                 position.setSpeed(Double.valueOf(speed));
-            } else {
-                position.setSpeed(0.0);
             }
 
             // Course
             String course = parser.group(index++);
             if (course != null) {
                 position.setCourse(Double.valueOf(course));
-            } else {
-                position.setCourse(0.0);
             }
 
             // Date
@@ -153,11 +144,6 @@ public class GpsGateProtocolDecoder extends BaseProtocolDecoder {
             time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
             time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
             position.setTime(time.getTime());
-
-            // Altitude
-            position.setAltitude(0.0);
-
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
         }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2014 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,22 +15,20 @@
  */
 package org.traccar.protocol;
 
+import java.net.SocketAddress;
 import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Gps103ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Gps103ProtocolDecoder(Gps103Protocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -41,24 +39,30 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             "(\\d{2}):?(\\d{2})(?:\\d{2})?," +  // Local Time
             "[^,]*," +
             "[FL]," +                           // F - full / L - low
-            "(\\d{2})(\\d{2})(\\d{2})\\.(\\d+)," + // Time UTC (HHMMSS.SSS)
+            "(?:(\\d{2})(\\d{2})(\\d{2})\\.(\\d+)|" + // Time UTC (HHMMSS.SSS)
+            "(?:\\d{1,5}\\.\\d+))," +
             "([AV])," +                         // Validity
+            "(?:([NS]),)?" +
             "(\\d+)(\\d{2}\\.\\d+)," +          // Latitude (DDMM.MMMM)
-            "([NS])," +
+            "(?:([NS]),)?" +
+            "(?:([EW]),)?" +
             "(\\d+)(\\d{2}\\.\\d+)," +          // Longitude (DDDMM.MMMM)
-            "([EW])?," +
-            "(\\d+\\.?\\d*)," +                 // Speed
+            "(?:([EW])?,)?" +
+            "(\\d+\\.?\\d*)?,?" +               // Speed
             "(\\d+\\.?\\d*)?,?" +               // Course
             "(\\d+\\.?\\d*)?,?" +               // Altitude
-            "([^,]+)?,?" +
-            "([^,]+)?,?" +
-            "([^,]+)?,?" +
-            "([^,]+)?,?" +
+            "([^,;]+)?,?" +
+            "([^,;]+)?,?" +
+            "([^,;]+)?,?" +
+            "([^,;]+)?,?" +
+            "([^,;]+)?,?" +
             ".*");
+
+    private static final Pattern handshakePattern = Pattern.compile("##,imei:(\\d+),A");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -66,7 +70,11 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         // Send response #1
         if (sentence.contains("##")) {
             if (channel != null) {
-                channel.write("LOAD");
+                channel.write("LOAD", remoteAddress);
+                Matcher handshakeMatcher = handshakePattern.matcher(sentence);
+                if (handshakeMatcher.matches()) {
+                    identify(handshakeMatcher.group(1), channel);
+                }
             }
             return null;
         }
@@ -74,7 +82,7 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         // Send response #2
         if (sentence.length() == 15 && Character.isDigit(sentence.charAt(0))) {
             if (channel != null) {
-                channel.write("ON");
+                channel.write("ON", remoteAddress);
             }
             return null;
         }
@@ -87,22 +95,24 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("gps103");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
         String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(imei, channel, remoteAddress)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Alarm message
-        extendedInfo.set("alarm", parser.group(index++));
-        
+        String alarm = parser.group(index++);
+        position.set(Event.KEY_ALARM, alarm);
+        if (channel != null && alarm.equals("help me")) {
+            channel.write("**,imei:" + imei + ",E;", remoteAddress);
+        }
+
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
@@ -113,70 +123,87 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         int localHours = Integer.valueOf(parser.group(index++));
         int localMinutes = Integer.valueOf(parser.group(index++));
         
-        int utcHours = Integer.valueOf(parser.group(index++));
-        int utcMinutes = Integer.valueOf(parser.group(index++));
+        String utcHours = parser.group(index++);
+        String utcMinutes = parser.group(index++);
 
         // Time
         time.set(Calendar.HOUR_OF_DAY, localHours);
         time.set(Calendar.MINUTE, localMinutes);
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MILLISECOND, Integer.valueOf(parser.group(index++)));
+        String seconds = parser.group(index++);
+        if (seconds != null) {
+            time.set(Calendar.SECOND, Integer.valueOf(seconds));
+        }
+        String milliseconds = parser.group(index++);
+        if (milliseconds != null) {
+            time.set(Calendar.MILLISECOND, Integer.valueOf(milliseconds));
+        }
         
         // Timezone calculation
-        int deltaMinutes = (localHours - utcHours) * 60 + localMinutes - utcMinutes;
-        if (deltaMinutes <= -12 * 60) {
-            deltaMinutes += 24 * 60;
-        } else if (deltaMinutes > 12 * 60) {
-            deltaMinutes -= 24 * 60;
+        if (utcHours != null && utcMinutes != null) {
+            int deltaMinutes = (localHours - Integer.valueOf(utcHours)) * 60;
+            deltaMinutes += localMinutes - Integer.valueOf(utcMinutes);
+            if (deltaMinutes <= -12 * 60) {
+                deltaMinutes += 24 * 60;
+            } else if (deltaMinutes > 12 * 60) {
+                deltaMinutes -= 24 * 60;
+            }
+            time.add(Calendar.MINUTE, -deltaMinutes);
         }
-        time.add(Calendar.MINUTE, -deltaMinutes);
         position.setTime(time.getTime());
 
         // Validity
         position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Latitude
+        String hemisphere = parser.group(index++);
         Double latitude = Double.valueOf(parser.group(index++));
         latitude += Double.valueOf(parser.group(index++)) / 60;
-        if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
+        if (parser.group(index) != null) {
+            hemisphere = parser.group(index);
+        }
+        index++;
+        if (hemisphere.compareTo("S") == 0) {
+            latitude = -latitude;
+        }
         position.setLatitude(latitude);
 
         // Longitude
+        hemisphere = parser.group(index++);
         Double longitude = Double.valueOf(parser.group(index++));
         longitude += Double.valueOf(parser.group(index++)) / 60;
-        String hemisphere = parser.group(index++);
-        if (hemisphere != null) {
-            if (hemisphere.compareTo("W") == 0) longitude = -longitude;
+        if (parser.group(index) != null) {
+            hemisphere = parser.group(index);
+        }
+        index++;
+        if (hemisphere != null && hemisphere.compareTo("W") == 0) {
+            longitude = -longitude;
         }
         position.setLongitude(longitude);
 
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)));
-
+        String speed = parser.group(index++);        
+        if (speed != null) {
+            position.setSpeed(Double.valueOf(speed));
+        }
+        
         // Course
         String course = parser.group(index++);
         if (course != null) {
             position.setCourse(Double.valueOf(course));
-        } else {
-            position.setCourse(0.0);
         }
 
         // Altitude
         String altitude = parser.group(index++);
         if (altitude != null) {
             position.setAltitude(Double.valueOf(altitude));
-        } else {
-            position.setAltitude(0.0);
         }
 
         // Additional data
-        extendedInfo.set("io1", parser.group(index++));
-        extendedInfo.set("io2", parser.group(index++));
-        extendedInfo.set("io3", parser.group(index++));
-        extendedInfo.set("io4", parser.group(index++));
-
-        // Extended info
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set(Event.PREFIX_IO + 1, parser.group(index++));
+        position.set(Event.PREFIX_IO + 2, parser.group(index++));
+        position.set(Event.PREFIX_IO + 3, parser.group(index++));
+        position.set(Event.PREFIX_IO + 4, parser.group(index++));
+        position.set(Event.PREFIX_IO + 5, parser.group(index++));
 
         return position;
     }

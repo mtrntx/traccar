@@ -16,65 +16,58 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class Ev603ProtocolDecoder extends BaseProtocolDecoder{
 
-    private Long deviceId;
-
-    public Ev603ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Ev603ProtocolDecoder(Ev603Protocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
-            "!A," +                           // Type
+            "!.," +                           // Type
             "(\\d{2})\\/(\\d{2})\\/(\\d{2})," + // Date dd/mm/YY
             "(\\d{2}):(\\d{2}):(\\d{2})," +   // Time hh:mm:ss
-            "(-?\\d+\\.\\d+)," +              // Latitude (DDMM.MMMM)
-            "(-?\\d+\\.\\d+)," +              // Longitude (DDDMM.MMMM)
-            "(\\d+\\.\\d+)," +                // Speed
-            "(\\d+\\.?\\d+)," +               // Course
+            "(-?\\d+\\.\\d+)," +              // Latitude
+            "(-?\\d+\\.\\d+)," +              // Longitude
+            "(\\d+\\.?\\d*)," +               // Speed
+            "(\\d+\\.?\\d*)," +               // Course
             ".*");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
 
         // Detect device ID
         if (sentence.startsWith("!1,")) {
-            String imei = sentence.substring(3);
-            try {
-                deviceId = getDataManager().getDeviceByImei(imei).getId();
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei);
-                return null;
-            }
-        }
 
-        else if (sentence.startsWith("!A,")) {
+            identify(sentence.substring(3), channel);
+
+        } else {
+
             // Parse message
             Matcher parser = pattern.matcher(sentence);
-            if (deviceId == null || !parser.matches()) {
+            if (!hasDeviceId() || !parser.matches()) {
                 return null;
             }
 
             // Create new position
             Position position = new Position();
-            position.setDeviceId(deviceId);
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("ev603");
+            position.setDeviceId(getDeviceId());
+            position.setProtocol(getProtocolName());
             Integer index = 1;
 
             // Date
@@ -97,19 +90,14 @@ public class Ev603ProtocolDecoder extends BaseProtocolDecoder{
             position.setLatitude(Double.valueOf(parser.group(index++)));
             position.setLongitude(Double.valueOf(parser.group(index++)));
 
-            // Altitude
-            position.setAltitude(0.0);
-
             // Speed
             position.setSpeed(Double.valueOf(parser.group(index++)));
 
             // Course
             position.setCourse(Double.valueOf(parser.group(index++)));
             if (position.getCourse() > 360) {
-                position.setCourse(0.0);
+                position.setCourse(0);
             }
-
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
         }
 

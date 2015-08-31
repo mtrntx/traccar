@@ -15,42 +15,29 @@
  */
 package org.traccar;
 
-import java.util.List;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
+import org.traccar.geocode.AddressFormat;
 import org.traccar.geocode.ReverseGeocoder;
 import org.traccar.model.Position;
 
-public class ReverseGeocoderHandler extends OneToOneDecoder {
+public class ReverseGeocoderHandler extends BaseDataHandler {
 
     private final ReverseGeocoder geocoder;
+    private final boolean processInvalidPositions;
+    private final AddressFormat addressFormat;
 
-    public ReverseGeocoderHandler(ReverseGeocoder geocoder) {
+    public ReverseGeocoderHandler(ReverseGeocoder geocoder, boolean processInvalidPositions ) {
         this.geocoder = geocoder;
+        this.processInvalidPositions = processInvalidPositions;
+        addressFormat = new AddressFormat();
     }
 
     @Override
-    protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
-            throws Exception {
-        
-        if (geocoder != null) {
-            if (msg instanceof Position) {
-                Position position = (Position) msg;
-                position.setAddress(geocoder.getAddress(
-                        position.getLatitude(), position.getLongitude()));
-            } else if (msg instanceof List) {
-                List<Position> positions = (List<Position>) msg;
-                for (Position position : positions) {
-                    position.setAddress(geocoder.getAddress(
-                            position.getLatitude(), position.getLongitude()));
-                }
-            }
+    protected Position handlePosition(Position position) {
+        if (geocoder != null && (processInvalidPositions || position.getValid())) {
+            position.setAddress(geocoder.getAddress(
+                    addressFormat, position.getLatitude(), position.getLongitude()));
         }
-
-        return msg;
+        return position;
     }
 
 }

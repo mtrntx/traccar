@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2013 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,78 +17,58 @@ package org.traccar;
 
 import java.net.SocketAddress;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelEvent;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import static org.jboss.netty.channel.Channels.fireMessageReceived;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
-import org.traccar.model.DataManager;
+import org.traccar.helper.Log;
+import org.traccar.model.Device;
 
-/**
- * Base class for protocol decoders
- */
-public abstract class BaseProtocolDecoder extends OneToOneDecoder {
+public abstract class BaseProtocolDecoder extends ExtendedObjectDecoder {
 
-    private ServerManager serverManager;
-    private DataManager dataManager;
+    private final Protocol protocol;
 
-    public final void setDataManager(DataManager dataManager) {
-        this.dataManager = dataManager;
+    public String getProtocolName() {
+        return protocol.getName();
     }
 
-    public final DataManager getDataManager() {
-        return dataManager;
+    private long deviceId;
+
+    public boolean hasDeviceId() {
+        return (deviceId != 0);
     }
 
-    public final void setServerManager(ServerManager serverManager) {
-        this.serverManager = serverManager;
+    public long getDeviceId() {
+        return deviceId;
     }
 
-    public final ServerManager getServerManager() {
-        return serverManager;
-    }
-
-    public BaseProtocolDecoder() {
-    }
-
-    public BaseProtocolDecoder(ServerManager serverManager) {
-        if (serverManager != null) {
-            this.serverManager = serverManager;
-            dataManager = serverManager.getDataManager();
+    public boolean identify(String uniqueId, Channel channel, SocketAddress remoteAddress, boolean logWarning) {
+        try {
+            Device device = Context.getIdentityManager().getDeviceByUniqueId(uniqueId);
+            if (device != null) {
+                deviceId = device.getId();
+                Context.getConnectionManager().setActiveDevice(deviceId, protocol, channel, remoteAddress);
+                return true;
+            } else {
+                deviceId = 0;
+                if (logWarning) {
+                    Log.warning("Unknown device - " + uniqueId);
+                }
+                return false;
+            }
+        } catch (Exception error) {
+            deviceId = 0;
+            Log.warning(error);
+            return false;
         }
     }
-    
-    @Override
-    public void handleUpstream(
-            ChannelHandlerContext ctx, ChannelEvent evt) throws Exception {
-        if (!(evt instanceof MessageEvent)) {
-            ctx.sendUpstream(evt);
-            return;
-        }
 
-        MessageEvent e = (MessageEvent) evt;
-        Object originalMessage = e.getMessage();
-        Object decodedMessage = decode(ctx, e.getChannel(), e.getRemoteAddress(), originalMessage);
-        if (originalMessage == decodedMessage) {
-            ctx.sendUpstream(evt);
-        } else if (decodedMessage != null) {
-            fireMessageReceived(ctx, decodedMessage, e.getRemoteAddress());
-        }
+    public boolean identify(String uniqueId, Channel channel, SocketAddress remoteAddress) {
+        return identify(uniqueId, channel, remoteAddress, true);
     }
-    
-    protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
-        
-        return decode(ctx, channel, msg);
-        
+
+    public boolean identify(String uniqueId, Channel channel) {
+        return identify(uniqueId, channel, null, true);
     }
-    
-    @Override
-    protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg) throws Exception {
-        
-        return null; // default implementation
-        
+
+    public BaseProtocolDecoder(Protocol protocol) {
+        this.protocol = protocol;
     }
 
 }

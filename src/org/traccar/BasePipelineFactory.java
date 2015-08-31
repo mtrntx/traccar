@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2013 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,34 +15,34 @@
  */
 package org.traccar;
 
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.*;
+import org.jboss.netty.channel.ChannelEvent;
+import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.ChannelPipeline;
+import org.jboss.netty.channel.ChannelPipelineFactory;
+import org.jboss.netty.channel.ChannelStateEvent;
+import org.jboss.netty.channel.Channels;
+import org.jboss.netty.channel.DownstreamMessageEvent;
+import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.SimpleChannelHandler;
 import org.jboss.netty.handler.logging.LoggingHandler;
 import org.jboss.netty.handler.timeout.IdleStateHandler;
-import org.traccar.geocode.ReverseGeocoder;
 import org.traccar.helper.Log;
-import org.traccar.model.DataManager;
 
-/**
-  * Base pipeline factory
-  */
 public abstract class BasePipelineFactory implements ChannelPipelineFactory {
 
-    private TrackerServer server;
-    private DataManager dataManager;
-    private Boolean loggerEnabled;
-    private Integer resetDelay;
-    private ReverseGeocoder reverseGeocoder;
+    private final TrackerServer server;
+    private final int resetDelay;
 
-    /**
-     * Open channel handler
-     */
+    private FilterHandler filterHandler;
+    private DistanceHandler distanceHandler;
+    private ReverseGeocoderHandler reverseGeocoderHandler;
+
     protected class OpenChannelHandler extends SimpleChannelHandler {
 
-        private TrackerServer server;
+        private final TrackerServer server;
 
         public OpenChannelHandler(TrackerServer server) {
             this.server = server;
@@ -54,9 +54,6 @@ public abstract class BasePipelineFactory implements ChannelPipelineFactory {
         }
     }
 
-    /**
-     * Logging using global logger
-     */
     protected class StandardLoggingHandler extends LoggingHandler {
 
         @Override
@@ -65,40 +62,41 @@ public abstract class BasePipelineFactory implements ChannelPipelineFactory {
                 MessageEvent event = (MessageEvent) e;
                 StringBuilder msg = new StringBuilder();
 
-                msg.append("[").append(((InetSocketAddress) e.getChannel().getLocalAddress()).getPort());
-                msg.append((e instanceof DownstreamMessageEvent) ? " -> " : " <- ");
+                msg.append("[").append(String.format("%08X", e.getChannel().getId())).append(": ");
+                msg.append(((InetSocketAddress) e.getChannel().getLocalAddress()).getPort());
+                msg.append((e instanceof DownstreamMessageEvent) ? " > " : " < ");
 
                 msg.append(((InetSocketAddress) event.getRemoteAddress()).getAddress().getHostAddress()).append("]");
 
                 // Append hex message
                 if (event.getMessage() instanceof ChannelBuffer) {
-                    msg.append(" - HEX: ");
+                    msg.append(" HEX: ");
                     msg.append(ChannelBuffers.hexDump((ChannelBuffer) event.getMessage()));
                 }
 
                 Log.debug(msg.toString());
-            } else if (e instanceof ExceptionEvent) {
-                ExceptionEvent event = (ExceptionEvent) e;
-                Log.warning(event.getCause());
             }
         }
 
     }
 
-    public BasePipelineFactory(ServerManager serverManager, TrackerServer server, String protocol) {
+    public BasePipelineFactory(TrackerServer server, String protocol) {
         this.server = server;
-        dataManager = serverManager.getDataManager();
-        loggerEnabled = serverManager.isLoggerEnabled();
-        reverseGeocoder = serverManager.getReverseGeocoder();
+        
+        resetDelay = Context.getConfig().getInteger(protocol + ".resetDelay", 0);
 
-        String resetDelayProperty = serverManager.getProperties().getProperty(protocol + ".resetDelay");
-        if (resetDelayProperty != null) {
-            resetDelay = Integer.valueOf(resetDelayProperty);
+        if (Context.getConfig().getBoolean("filter.enable")) {
+            filterHandler = new FilterHandler();
         }
-    }
+        
+        if (Context.getReverseGeocoder() != null) {
+            reverseGeocoderHandler = new ReverseGeocoderHandler(
+                    Context.getReverseGeocoder(), Context.getConfig().getBoolean("geocode.processInvalidPositions"));
+        }
 
-    protected DataManager getDataManager() {
-        return dataManager;
+        if (Context.getConfig().getBoolean("distance.enable")) {
+            distanceHandler = new DistanceHandler();
+        }
     }
 
     protected abstract void addSpecificHandlers(ChannelPipeline pipeline);
@@ -106,18 +104,31 @@ public abstract class BasePipelineFactory implements ChannelPipelineFactory {
     @Override
     public ChannelPipeline getPipeline() {
         ChannelPipeline pipeline = Channels.pipeline();
-        if (resetDelay != null) {
+        if (resetDelay != 0) {
             pipeline.addLast("idleHandler", new IdleStateHandler(GlobalTimer.getTimer(), resetDelay, 0, 0));
         }
         pipeline.addLast("openHandler", new OpenChannelHandler(server));
-        if (loggerEnabled) {
+        if (Context.isLoggerEnabled()) {
             pipeline.addLast("logger", new StandardLoggingHandler());
         }
         addSpecificHandlers(pipeline);
-        if (reverseGeocoder != null) {
-            pipeline.addLast("geocoder", new ReverseGeocoderHandler(reverseGeocoder));
+        if (filterHandler != null) {
+            pipeline.addLast("filter", filterHandler);
         }
-        pipeline.addLast("handler", new TrackerEventHandler(dataManager));
+        if (distanceHandler != null) {
+            pipeline.addLast("distance", distanceHandler);
+        }
+        if (reverseGeocoderHandler != null) {
+            pipeline.addLast("geocoder", reverseGeocoderHandler);
+        }
+        pipeline.addLast("remoteAddress", new RemoteAddressHandler());
+        if (Context.getDataManager() != null) {
+            pipeline.addLast("dataHandler", new DefaultDataHandler());
+        }
+        if (Context.getConfig().getBoolean("forward.enable")) {
+            pipeline.addLast("webHandler", new WebDataHandler(Context.getConfig().getString("forward.url")));
+        }
+        pipeline.addLast("mainHandler", new MainEventHandler());
         return pipeline;
     }
 

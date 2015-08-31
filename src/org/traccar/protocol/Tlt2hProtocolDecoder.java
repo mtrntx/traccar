@@ -15,24 +15,25 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.LinkedList;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
 
-    public Tlt2hProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Tlt2hProtocolDecoder(Tlt2hProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern patternHeader = Pattern.compile(
@@ -58,7 +59,7 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -72,32 +73,27 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
         }
 
         // Get device identifier
-        String imei = parser.group(1);
-        long deviceId;
-        try {
-            deviceId = getDataManager().getDeviceByImei(imei).getId();
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(1), channel)) {
             return null;
         }
-        
+
         // Get status
         String status = parser.group(2);
         
         String[] messages = sentence.substring(sentence.indexOf('\n') + 1).split("\r\n");
-        List<Position> positions = new LinkedList<Position>();
+        List<Position> positions = new LinkedList<>();
         
         for (String message : messages) {
             parser = patternPosition.matcher(message);
             if (parser.matches()) {
                 Position position = new Position();
-                ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("tlt2h");
-                position.setDeviceId(deviceId);
+                position.setProtocol(getProtocolName());
+                position.setDeviceId(getDeviceId());
 
                 Integer index = 1;
                 
                 // Cell
-                extendedInfo.set("cell", parser.group(index++));
+                position.set(Event.KEY_CELL, parser.group(index++));
 
                 // Time
                 Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -126,16 +122,12 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
                 String speed = parser.group(index++);
                 if (speed != null) {
                     position.setSpeed(Double.valueOf(speed));
-                } else {
-                    position.setSpeed(0.0);
                 }
 
                 // Course
                 String course = parser.group(index++);
                 if (course != null) {
                     position.setCourse(Double.valueOf(course));
-                } else {
-                    position.setCourse(0.0);
                 }
 
                 // Date
@@ -143,14 +135,9 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
                 time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
                 time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
                 position.setTime(time.getTime());
-
-                // Altitude
-                position.setAltitude(0.0);
                 
                 // Status
-                extendedInfo.set("status", status);
-                
-                position.setExtendedInfo(extendedInfo.toString());
+                position.set(Event.KEY_STATUS, status);
                 positions.add(position);
             }
         }

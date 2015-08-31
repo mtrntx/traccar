@@ -15,22 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
 
-    public IntellitracProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public IntellitracProtocolDecoder(IntellitracProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -58,12 +59,12 @@ public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+)," +                    // Charger Pressure
             "(\\d+)," +                    // TPL
             "(\\d+)," +                    // Axle Weight
-            "(\\d+))?" +                   // Milage
+            "(\\d+))?" +                   // Odometer
             ".*");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -76,17 +77,14 @@ public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("intellitrac");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
 
         // Detect device
-        String id = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
         
         // Date and time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -109,36 +107,32 @@ public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
         // Satellites
         int satellites = Integer.valueOf(parser.group(index++));
         position.setValid(satellites >= 3);
-        extendedInfo.set("satellites", satellites);
+        position.set(Event.KEY_SATELLITES, satellites);
         
         // Report identifier
-        extendedInfo.set("index", Long.valueOf(parser.group(index++)));
+        position.set(Event.KEY_INDEX, Long.valueOf(parser.group(index++)));
 
         // Input
-        extendedInfo.set("input", parser.group(index++));
+        position.set(Event.KEY_INPUT, parser.group(index++));
 
         // Output
-        extendedInfo.set("output", parser.group(index++));
+        position.set(Event.KEY_OUTPUT, parser.group(index++));
 
-        // ADC1
-        extendedInfo.set("adc1", parser.group(index++));
-
-        // ADC2
-        extendedInfo.set("adc2", parser.group(index++));
+        // ADC
+        position.set(Event.PREFIX_ADC + 1, parser.group(index++));
+        position.set(Event.PREFIX_ADC + 2, parser.group(index++));
 
         // J1939 data
-        extendedInfo.set("vss", parser.group(index++));
-        extendedInfo.set("rpm", parser.group(index++));
-        extendedInfo.set("coolant", parser.group(index++));
-        extendedInfo.set("fuel", parser.group(index++));
-        extendedInfo.set("consumption", parser.group(index++));
-        extendedInfo.set("temperature", parser.group(index++));
-        extendedInfo.set("charger", parser.group(index++));
-        extendedInfo.set("tpl", parser.group(index++));
-        extendedInfo.set("axle", parser.group(index++));
-        extendedInfo.set("milage", parser.group(index++));
-        
-        position.setExtendedInfo(extendedInfo.toString());
+        position.set("vss", parser.group(index++));
+        position.set("rpm", parser.group(index++));
+        position.set("coolant", parser.group(index++));
+        position.set(Event.KEY_FUEL, parser.group(index++));
+        position.set("consumption", parser.group(index++));
+        position.set(Event.PREFIX_TEMP + 1, parser.group(index++));
+        position.set(Event.KEY_CHARGE, parser.group(index++));
+        position.set("tpl", parser.group(index++));
+        position.set("axle", parser.group(index++));
+        position.set(Event.KEY_ODOMETER, parser.group(index++));
         return position;
     }
 

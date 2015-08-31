@@ -15,22 +15,22 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class Pt3000ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Pt3000ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Pt3000ProtocolDecoder(Pt3000Protocol protocol) {
+        super(protocol);
     }
 
     static private Pattern pattern = Pattern.compile(
@@ -49,7 +49,7 @@ public class Pt3000ProtocolDecoder extends BaseProtocolDecoder {
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -62,17 +62,15 @@ public class Pt3000ProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("pt3000");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Identifier
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
-        }        
+        if (!identify(parser.group(index++), channel)) {
+            return null;
+        }
+        position.setDeviceId(getDeviceId());
         
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -82,7 +80,7 @@ public class Pt3000ProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
 
         // Validity
-        position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
+        position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Latitude
         Double latitude = Double.valueOf(parser.group(index++));
@@ -100,16 +98,12 @@ public class Pt3000ProtocolDecoder extends BaseProtocolDecoder {
         String speed = parser.group(index++);
         if (speed != null) {
             position.setSpeed(Double.valueOf(speed));
-        } else {
-            position.setSpeed(0.0);
         }
 
         // Course
         String course = parser.group(index++);
         if (course != null) {
             position.setCourse(Double.valueOf(course));
-        } else {
-            position.setCourse(0.0);
         }
 
         // Date
@@ -117,11 +111,6 @@ public class Pt3000ProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
         time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
         position.setTime(time.getTime());
-
-        // Altitude
-        position.setAltitude(0.0);
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

@@ -15,24 +15,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class MiniFinderProtocolDecoder extends BaseProtocolDecoder {
 
-    private Long deviceId;
-
-    public MiniFinderProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public MiniFinderProtocolDecoder(MiniFinderProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -52,23 +51,18 @@ public class MiniFinderProtocolDecoder extends BaseProtocolDecoder {
     
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
 
         // Identification
         if (sentence.startsWith("!1")) {
-            String imei = sentence.substring(3, sentence.length());
-            try {
-                deviceId = getDataManager().getDeviceByImei(imei).getId();
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei);
-            }
+            identify(sentence.substring(3, sentence.length()), channel);
         }
 
         // Location
-        else if (sentence.startsWith("!D") && deviceId != null) {
+        else if (sentence.startsWith("!D") && hasDeviceId()) {
 
             // Parse message
             Matcher parser = pattern.matcher(sentence);
@@ -78,8 +72,8 @@ public class MiniFinderProtocolDecoder extends BaseProtocolDecoder {
 
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("minifinder");
-            position.setDeviceId(deviceId);
+            position.setProtocol(getProtocolName());
+            position.setDeviceId(getDeviceId());
 
             Integer index = 1;
 
@@ -102,19 +96,17 @@ public class MiniFinderProtocolDecoder extends BaseProtocolDecoder {
             
             // Flags
             String flags = parser.group(index++);
-            extendedInfo.set("flags", flags);
+            position.set(Event.KEY_FLAGS, flags);
             position.setValid((Integer.parseInt(flags, 16) & 0x01) != 0);
 
             // Altitude
             position.setAltitude(Double.valueOf(parser.group(index++)));
 
             // Battery
-            extendedInfo.set("battery", parser.group(index++));
+            position.set(Event.KEY_BATTERY, parser.group(index++));
 
             // Satellites
-            extendedInfo.set("satellites", parser.group(index++));
-
-            position.setExtendedInfo(extendedInfo.toString());
+            position.set(Event.KEY_SATELLITES, parser.group(index++));
             return position;
         }
 

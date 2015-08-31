@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2013 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,78 +15,136 @@
  */
 package org.traccar.protocol;
 
+import java.net.SocketAddress;
 import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.Context;
+import org.traccar.helper.UnitsConverter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Gl200ProtocolDecoder extends BaseProtocolDecoder {
 
-    public Gl200ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Gl200ProtocolDecoder(Gl200Protocol protocol) {
+        super(protocol);
     }
 
+    private static final Pattern heartbeatPattern = Pattern.compile(
+            "\\+ACK\\:GTHBD," +
+            "([0-9A-Z]{2}\\p{XDigit}{4})," +
+            ".*," +
+            "(\\p{XDigit}{4})\\$?");
+
     private static final Pattern pattern = Pattern.compile(
-            "\\+RESP:GT...," +
-            "[0-9a-fA-F]{6}," +                 // Protocol version
-            "(\\d{15}),.*," +                   // IMEI
+            "(?:(?:\\+(?:RESP|BUFF):)|" +
+            "(?:\\x00?\\x04,\\p{XDigit}{4},[01],))" +
+            "GT...," +
+            "(?:[0-9A-Z]{2}\\p{XDigit}{4})?," + // Protocol version
+            "([^,]+)," +                        // IMEI
+
+            "(?:[0-9A-Z]{17}," +                // VIN
+            "[^,]{0,20}," +                     // Device name
+            "[01]," +                           // Report type
+            "\\p{XDigit}{1,8}," +               // Report mask
+            "[0-9A-Z]{17}," +                   // VIN
+            "[01]," +                           // ODB connect
+            "\\d{1,5}," +                       // ODB voltage
+            "\\p{XDigit}{8}," +                 // Support PIDs
+            "\\d{1,5}," +                       // Engine RPM
+            "\\d{1,3}," +                       // Speed
+            "-?\\d{1,3}," +                     // Coolant temp
+            "(\\d+\\.?\\d*|Inf|NaN)?," +        // Fuel consumption
+            "\\d{1,5}," +                       // Odometer
+            "\\d{1,5}," +
+            "[01]," +                           // ODB connect
+            "\\d{1,3}," +                       // Number of DTCs
+            "\\p{XDigit}*," +                   // DTCs
+            "\\d{1,3}," +                       // Throttle
+            "\\d{1,3}," +                       // Engine load
+            "(\\d{1,3})?,"+                     // Fuel level
+            "\\d+|.*)," +                       // Odometer
+
             "(\\d*)," +                         // GPS accuracy
-            "(\\d+.\\d)," +                     // Speed
-            "(\\d+)," +                         // Course
-            "(-?\\d+\\.\\d)," +                 // Altitude
+            "(\\d+.\\d)?," +                    // Speed
+            "(\\d+)?," +                        // Course
+            "(-?\\d+\\.\\d)?," +                // Altitude
             "(-?\\d+\\.\\d+)," +                // Longitude
             "(-?\\d+\\.\\d+)," +                // Latitude
             "(\\d{4})(\\d{2})(\\d{2})" +        // Date (YYYYMMDD)
             "(\\d{2})(\\d{2})(\\d{2})," +       // Time (HHMMSS)
-            "(\\d{4})," +                       // MCC
-            "(\\d{4})," +                       // MNC
-            "(\\p{XDigit}{4})," +               // LAC
-            "(\\p{XDigit}{4})," +               // Cell
-            "(?:.*,(\\d{1,3}),\\d{14},)?" +     // Battery
-            ".*");
+            "(\\d{4})?," +                      // MCC
+            "(\\d{4})?," +                      // MNC
+            "(\\p{XDigit}{4}|\\p{XDigit}{8})?," + // LAC
+            "(\\p{XDigit}{4})?," +              // Cell
+            "(?:(\\d+\\.\\d)?," +               // Odometer
+            "(\\d{1,3})?,)?" +                  // Battery*/
+            ".*," +
+            "(\\p{XDigit}{4})\\$?");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
 
+        // Handle heartbeat
+        Matcher parser = heartbeatPattern.matcher(sentence);
+        if (parser.matches()) {
+            if (channel != null) {
+                channel.write("+SACK:GTHBD," + parser.group(1) + "," + parser.group(2) + "$", remoteAddress);
+            }
+            return null;
+        }
+
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        parser = pattern.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("gl200");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel, remoteAddress)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
+
+        // Fuel
+        position.set("fuel-consumption", parser.group(index++));
+        position.set(Event.KEY_FUEL, parser.group(index++));
 
         // Validity
-        position.setValid(Integer.valueOf(parser.group(index++)) == 0);
+        position.setValid(Integer.valueOf(parser.group(index++)) < 20);
 
-        // Position info
-        position.setSpeed(Double.valueOf(parser.group(index++)));
-        position.setCourse(Double.valueOf(parser.group(index++)));
-        position.setAltitude(Double.valueOf(parser.group(index++)));
+        // Speed
+        String speed = parser.group(index++);
+        if (speed != null) {
+            position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(speed)));
+        }
+
+        // Course
+        String course = parser.group(index++);
+        if (speed != null) {
+            position.setCourse(Double.valueOf(course));
+        }
+
+        // Altitude
+        String altitude = parser.group(index++);
+        if (speed != null) {
+            position.setAltitude(Double.valueOf(altitude));
+        }
+
+        // Coordinates
         position.setLongitude(Double.valueOf(parser.group(index++)));
         position.setLatitude(Double.valueOf(parser.group(index++)));
 
@@ -104,18 +162,22 @@ public class Gl200ProtocolDecoder extends BaseProtocolDecoder {
         position.setTime(time.getTime());
 
         // Cell information
-        extendedInfo.set("mcc", parser.group(index++));
-        extendedInfo.set("mnc", parser.group(index++));
-        extendedInfo.set("lac", parser.group(index++));
-        extendedInfo.set("cell", parser.group(index++));
+        position.set(Event.KEY_MCC, parser.group(index++));
+        position.set(Event.KEY_MNC, parser.group(index++));
+        position.set(Event.KEY_LAC, parser.group(index++));
+        position.set(Event.KEY_CELL, parser.group(index++));
 
-        // Battery
-        String battery = parser.group(index++);
-        if (battery != null) {
-            extendedInfo.set("battery", Integer.valueOf(battery));
+        // Other
+        String odometer = parser.group(index++);
+        if (odometer != null && Double.valueOf(odometer) != 0) {
+            position.set(Event.KEY_ODOMETER, odometer);
+        }
+        position.set(Event.KEY_BATTERY, parser.group(index++));
+
+        if (Context.getConfig().getBoolean(getProtocolName() + ".ack") && channel != null) {
+            channel.write("+SACK:" + parser.group(index++) + "$", remoteAddress);
         }
 
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

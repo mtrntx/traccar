@@ -15,24 +15,22 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
 
-    private Long deviceId;
-
-    public Tk102ProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public Tk102ProtocolDecoder(Tk102Protocol protocol) {
+        super(protocol);
     }
 
     static private Pattern pattern = Pattern.compile(
@@ -45,22 +43,18 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
             "([EW])" +
             "(\\d{3}\\.\\d{3})" +          // Speed
             "(\\d{2})(\\d{2})(\\d{2})" +   // Date (DDMMYY)
-            "\\d+\\)");
+            "\\d+.*\\)\\]?");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
 
         // Login
         if (sentence.startsWith("[!")) {
-            String imei = sentence.substring(14, 14 + 15);
-            try {
-                deviceId = getDataManager().getDeviceByImei(imei).getId();
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei);
+            if (!identify(sentence.substring(14, 14 + 15), channel)) {
                 return null;
             }
 
@@ -75,7 +69,7 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
         }
 
         // Parse message
-        else if (deviceId != null) {
+        else if (hasDeviceId()) {
 
             // Parse message
             Matcher parser = pattern.matcher(sentence);
@@ -85,8 +79,8 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
 
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("tk102");
-            position.setDeviceId(deviceId);
+            position.setProtocol(getProtocolName());
+            position.setDeviceId(getDeviceId());
 
             Integer index = 1;
 
@@ -98,7 +92,7 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
             time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
 
             // Validity
-            position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
+            position.setValid(parser.group(index++).compareTo("A") == 0);
 
             // Latitude
             Double latitude = Double.valueOf(parser.group(index++));
@@ -115,19 +109,11 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
             // Speed
             position.setSpeed(Double.valueOf(parser.group(index++)));
 
-            // Course
-            position.setCourse(0.0);
-
             // Date
             time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
             time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
             time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
             position.setTime(time.getTime());
-
-            // Altitude
-            position.setAltitude(0.0);
-
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
         }
 

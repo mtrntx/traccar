@@ -1,17 +1,16 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestDataManager;
+import org.traccar.helper.TestIdentityManager;
 import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
 
-public class GotopProtocolDecoderTest {
+public class GotopProtocolDecoderTest extends ProtocolDecoderTest {
 
     @Test
     public void testDecode() throws Exception {
 
-        GotopProtocolDecoder decoder = new GotopProtocolDecoder(null);
-        decoder.setDataManager(new TestDataManager());
+        GotopProtocolDecoder decoder = new GotopProtocolDecoder(new GotopProtocol());
 
         assertNull(decoder.decode(null, null, ""));
         
@@ -28,7 +27,10 @@ public class GotopProtocolDecoderTest {
         
         verify(decoder.decode(null, null,
                 "353327020412763,CMD-F,V,DATE:140125,TIME:183636,LAT:51.6384466N,LOT:000.2863866E,Speed:000.0,61-19,"));
-        
+
+        verify(decoder.decode(null, null,
+                "013949008891817,CMD-F,A,DATE:150225,TIME:175441,LAT:50.000000N,LOT:008.000000E,Speed:085.9,0-0-0-0-52-31,000,26201-1073-1DF5"));
+
     }
 
 }

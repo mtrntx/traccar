@@ -15,29 +15,29 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class M2mProtocolDecoder extends BaseProtocolDecoder {
 
-    public M2mProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public M2mProtocolDecoder(M2mProtocol protocol) {
+        super(protocol);
     }
     
     private boolean firstPacket = true;
-    private Long deviceId;
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -65,18 +65,14 @@ public class M2mProtocolDecoder extends BaseProtocolDecoder {
             }
 
             // Identification
-            try {
-                deviceId = getDataManager().getDeviceByImei(imei.toString()).getId();
-            } catch(Exception error) {
-                Log.warning("Unknown device - " + imei);
-            }
-            
-        } else if (deviceId != null) {
+            identify(imei.toString(), channel);
+
+        } else if (hasDeviceId()) {
             
             // Create new position
             Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("m2m");
-            position.setDeviceId(deviceId);
+            position.setProtocol(getProtocolName());
+            position.setDeviceId(getDeviceId());
 
             // Date and time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -115,21 +111,17 @@ public class M2mProtocolDecoder extends BaseProtocolDecoder {
             
             position.setLatitude(latitude);
             position.setLongitude(longitude);
-            position.setSpeed((double) buf.readUnsignedByte());
-            position.setCourse(0.0);
-            position.setAltitude(0.0);
+            position.setSpeed(buf.readUnsignedByte());
 
             // Satellites
             int satellites = buf.readUnsignedByte();
             if (satellites == 0) {
                 return null; // cell information
             }
-            extendedInfo.set("satellites", satellites);
+            position.set(Event.KEY_SATELLITES, satellites);
             position.setValid(true);
 
             // TODO decode everything else
-
-            position.setExtendedInfo(extendedInfo.toString());
             return position;
 
         }

@@ -15,25 +15,25 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class EasyTrackProtocolDecoder extends BaseProtocolDecoder {
 
-    public EasyTrackProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public EasyTrackProtocolDecoder(EasyTrackProtocol protocol) {
+        super(protocol);
     }
 
-    //ET,358155100003016,HB,A,0d081e,07381e,8038ee09,03d2e9be,004f,0000,40c00000,0f,100,0000,00037c,29
     static private Pattern pattern = Pattern.compile(
             "\\*..," +                          // Manufacturer
             "(\\d+)," +                         // IMEI
@@ -55,13 +55,13 @@ public class EasyTrackProtocolDecoder extends BaseProtocolDecoder {
             "(\\p{XDigit}+)," +                 // Signal
             "(\\d+)," +                         // Power
             "(\\p{XDigit}{4})," +               // Oil
-            "(\\p{XDigit}+),?" +                // Milage
+            "(\\p{XDigit}+),?" +                // Odometer
             "(\\d+)?" +                         // Altitude
             ".*");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -74,24 +74,21 @@ public class EasyTrackProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("easytrack");
+        position.setProtocol(getProtocolName());
 
         Integer index = 1;
 
         // Get device by IMEI
-        String imei = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Command
-        extendedInfo.set("command", parser.group(index++));
+        position.set("command", parser.group(index++));
 
         // Validity
-        position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
+        position.setValid(parser.group(index++).compareTo("A") == 0);
         
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -117,29 +114,25 @@ public class EasyTrackProtocolDecoder extends BaseProtocolDecoder {
         position.setCourse(Integer.parseInt(parser.group(index++), 16) / 100.0);
 
         // Status
-        extendedInfo.set("status", parser.group(index++));
+        position.set(Event.KEY_STATUS, parser.group(index++));
 
         // Signal
-        extendedInfo.set("signal", parser.group(index++));
+        position.set("signal", parser.group(index++));
 
         // Power
-        extendedInfo.set("power", Double.valueOf(parser.group(index++)));
+        position.set(Event.KEY_POWER, Double.valueOf(parser.group(index++)));
 
         // Oil
-        extendedInfo.set("oil", Integer.parseInt(parser.group(index++), 16));
+        position.set("oil", Integer.parseInt(parser.group(index++), 16));
 
-        // Milage
-        extendedInfo.set("milage", Integer.parseInt(parser.group(index++), 16));
+        // Odometer
+        position.set(Event.KEY_ODOMETER, Integer.parseInt(parser.group(index++), 16));
         
         // Altitude
         String altitude = parser.group(index++);
         if (altitude != null) {
             position.setAltitude(Double.valueOf(altitude));
-        } else {
-            position.setAltitude(0.0);
         }
-
-        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 

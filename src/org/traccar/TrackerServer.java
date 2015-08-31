@@ -33,7 +33,6 @@ import org.jboss.netty.channel.group.DefaultChannelGroup;
  */
 public abstract class TrackerServer {
 
-    private final ServerManager serverManager;
     private final Bootstrap bootstrap;
     private final String protocol;
 
@@ -41,8 +40,7 @@ public abstract class TrackerServer {
         return protocol;
     }
 
-    public TrackerServer(ServerManager serverManager, Bootstrap bootstrap, String protocol) {
-        this.serverManager = serverManager;
+    public TrackerServer(Bootstrap bootstrap, String protocol) {
         this.bootstrap = bootstrap;
         this.protocol = protocol;
 
@@ -53,11 +51,10 @@ public abstract class TrackerServer {
             bootstrap.setFactory(GlobalChannelFactory.getDatagramFactory());
         }
 
-        address = serverManager.getProperties().getProperty(protocol + ".address");
-        String portProperty = serverManager.getProperties().getProperty(protocol + ".port");
-        port = (portProperty != null) ? Integer.valueOf(portProperty) : 5000;
+        address = Context.getConfig().getString(protocol + ".address");
+        port = Context.getConfig().getInteger(protocol + ".port");
 
-        bootstrap.setPipelineFactory(new BasePipelineFactory(serverManager, this, protocol) {
+        bootstrap.setPipelineFactory(new BasePipelineFactory(this, protocol) {
             @Override
             protected void addSpecificHandlers(ChannelPipeline pipeline) {
                 TrackerServer.this.addSpecificHandlers(pipeline);
@@ -96,7 +93,7 @@ public abstract class TrackerServer {
     /**
      * Set endianness
      */
-    void setEndianness(ByteOrder byteOrder) {
+    public void setEndianness(ByteOrder byteOrder) {
         bootstrap.setOption("bufferFactory", new HeapChannelBufferFactory(byteOrder));
         bootstrap.setOption("child.bufferFactory", new HeapChannelBufferFactory(byteOrder));
     }
@@ -112,6 +109,10 @@ public abstract class TrackerServer {
 
     public void setPipelineFactory(ChannelPipelineFactory pipelineFactory) {
         bootstrap.setPipelineFactory(pipelineFactory);
+    }
+
+    public ChannelPipelineFactory getPipelineFactory() {
+        return bootstrap.getPipelineFactory();
     }
 
     /**

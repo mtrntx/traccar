@@ -15,6 +15,7 @@
  */
 package org.traccar.protocol;
 
+import java.net.SocketAddress;
 import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.util.Date;
@@ -27,17 +28,15 @@ import java.util.Set;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
 import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class GalileoProtocolDecoder extends BaseProtocolDecoder {
 
-    public GalileoProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public GalileoProtocolDecoder(GalileoProtocol protocol) {
+        super(protocol);
     }
 
     private static final int TAG_IMEI = 0x03;
@@ -48,11 +47,11 @@ public class GalileoProtocolDecoder extends BaseProtocolDecoder {
     private static final int TAG_STATUS = 0x40;
     private static final int TAG_POWER = 0x41;
     private static final int TAG_BATTERY = 0x42;
-    private static final int TAG_MILAGE = 0xd4;
+    private static final int TAG_ODOMETER = 0xd4;
     private static final int TAG_REFRIGERATOR = 0x5b;
     private static final int TAG_PRESSURE = 0x5c;
     
-    private static final Map<Integer, Integer> tagLengthMap = new HashMap<Integer, Integer>();
+    private static final Map<Integer, Integer> tagLengthMap = new HashMap<>();
     
     static {
         int[] l1 = {0x01,0x02,0x35,0x43,0xc4,0xc5,0xc6,0xc7,0xc8,0xc9,0xca,0xcb,0xcc,0xcd,0xce,0xcf,0xd0,0xd1,0xd2,0xd5,0x88,0x8a,0x8b,0x8c,0xa0,0xaf,0xa1,0xa2,0xa3,0xa4,0xa5,0xa6,0xa7,0xa8,0xa9,0xaa,0xab,0xac,0xad,0xae};
@@ -81,12 +80,10 @@ public class GalileoProtocolDecoder extends BaseProtocolDecoder {
             channel.write(reply);
         }
     }
-    
-    private Long deviceId;
-    
+
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
@@ -96,19 +93,21 @@ public class GalileoProtocolDecoder extends BaseProtocolDecoder {
         
         List<Position> positions = new LinkedList<Position>();
         Set<Integer> tags = new HashSet<Integer>();
+        boolean hasLocation = false;
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("galileo");
+        position.setProtocol(getProtocolName());
         
         while (buf.readerIndex() < length) {
 
             // Check if new message started
             int tag = buf.readUnsignedByte();
             if (tags.contains(tag)) {
-                position.setExtendedInfo(extendedInfo.toString());
-                positions.add(position);
+                if (hasLocation && position.getFixTime() != null) {
+                    positions.add(position);
+                }
                 tags.clear();
+                hasLocation = false;
                 position = new Position();
-                extendedInfo = new ExtendedInfoFormatter("galileo");
             }
             tags.add(tag);
             
@@ -117,11 +116,7 @@ public class GalileoProtocolDecoder extends BaseProtocolDecoder {
                 case TAG_IMEI:
                     String imei = buf.toString(buf.readerIndex(), 15, Charset.defaultCharset());
                     buf.skipBytes(imei.length());
-                    try {
-                        deviceId = getDataManager().getDeviceByImei(imei).getId();
-                    } catch(Exception error) {
-                        Log.warning("Unknown device - " + imei);
-                    }
+                    identify(imei, channel);
                     break;
 
                 case TAG_DATE:
@@ -129,6 +124,7 @@ public class GalileoProtocolDecoder extends BaseProtocolDecoder {
                     break;
                     
                 case TAG_COORDINATES:
+                    hasLocation = true;
                     position.setValid((buf.readUnsignedByte() & 0xf0) == 0x00);
                     position.setLatitude(buf.readInt() / 1000000.0);
                     position.setLongitude(buf.readInt() / 1000000.0);
@@ -140,23 +136,23 @@ public class GalileoProtocolDecoder extends BaseProtocolDecoder {
                     break;
                     
                 case TAG_ALTITUDE:
-                    position.setAltitude((double) buf.readShort());
+                    position.setAltitude(buf.readShort());
                     break;
                     
                 case TAG_STATUS:
-                    extendedInfo.set("status", buf.readUnsignedShort());
+                    position.set(Event.KEY_STATUS, buf.readUnsignedShort());
                     break;
                     
                 case TAG_POWER:
-                    extendedInfo.set("power", buf.readUnsignedShort());
+                    position.set(Event.KEY_POWER, buf.readUnsignedShort());
                     break;
                     
                 case TAG_BATTERY:
-                    extendedInfo.set("battery", buf.readUnsignedShort());
+                    position.set(Event.KEY_BATTERY, buf.readUnsignedShort());
                     break;
                     
-                case TAG_MILAGE:
-                    extendedInfo.set("milage", buf.readUnsignedInt());
+                case TAG_ODOMETER:
+                    position.set(Event.KEY_ODOMETER, buf.readUnsignedInt());
                     break;
                     
                 default:
@@ -165,29 +161,21 @@ public class GalileoProtocolDecoder extends BaseProtocolDecoder {
                     
             }
         }
-
-        position.setExtendedInfo(extendedInfo.toString());
-        positions.add(position);
+        if (hasLocation && position.getFixTime() != null) {
+            positions.add(position);
+        }
         
-        if (deviceId == null) {
+        if (!hasDeviceId()) {
             Log.warning("Unknown device");
             return null;
         }
 
         sendReply(channel, buf.readUnsignedShort());
-        
+
         for (Position p : positions) {
-            p.setDeviceId(deviceId);
-
-            if (p.getAltitude() == null) {
-                p.setAltitude(0.0);
-            }
-
-            if (p.getValid() == null || p.getTime() == null || p.getSpeed() == null) {
-                positions.remove(p);
-            }
+            p.setDeviceId(getDeviceId());
         }
-        
+
         if (positions.isEmpty()) {
             return null;
         }

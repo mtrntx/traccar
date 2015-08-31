@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2013 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,43 +15,63 @@
  */
 package org.traccar.geocode;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.URL;
-import java.net.URLConnection;
-import java.nio.charset.Charset;
+import javax.json.JsonArray;
+import javax.json.JsonObject;
+import javax.json.JsonString;
 
-import org.traccar.helper.Log;
+public class GoogleReverseGeocoder extends JsonReverseGeocoder {
 
-public class GoogleReverseGeocoder implements ReverseGeocoder {
-
-    private final static String MARKER = "\"formatted_address\" : \"";
+    public GoogleReverseGeocoder() {
+        super("http://maps.googleapis.com/maps/api/geocode/json?latlng=%f,%f");
+    }
 
     @Override
-    public String getAddress(double latitude, double longitude) {
+    protected Address parseAddress(JsonObject json) {
+        JsonArray results = json.getJsonArray("results");
 
-        try {
-            URL url = new URL("http://maps.googleapis.com/maps/api/geocode/json?latlng=" + latitude + "," + longitude + "&sensor=false");
-            URLConnection connection = url.openConnection();
+        if (!results.isEmpty()) {
+            Address address = new Address();
 
-            connection.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
-            
-            BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(),Charset.forName("UTF-8")));
+            JsonObject result = (JsonObject) results.get(0);
+            JsonArray components = result.getJsonArray("address_components");
 
-            // Find address line
-            String line;
-            while ((line = reader.readLine()) != null) {
-                int index = line.indexOf(MARKER);
-                if (index != -1) {
-                    return line.substring(index + MARKER.length(), line.length() - 2);
+            for (JsonObject component : components.getValuesAs(JsonObject.class)) {
+
+                String value = component.getString("short_name");
+
+                for (JsonString type : component.getJsonArray("types").getValuesAs(JsonString.class)) {
+                    
+                    switch (type.getString()) {
+                        case "street_number":
+                            address.setHouse(value);
+                            break;
+                        case "route":
+                            address.setStreet(value);
+                            break;
+                        case "locality":
+                            address.setSettlement(value);
+                            break;
+                        case "administrative_area_level_2":
+                            address.setDistrict(value);
+                            break;
+                        case "administrative_area_level_1":
+                            address.setState(value);
+                            break;
+                        case "country":
+                            address.setCountry(value);
+                            break;
+                        case "postal_code":
+                            address.setPostcode(value);
+                            break;
+                        default:
+                            continue;
+                    }
+                    
+                    break;
                 }
             }
 
-            reader.close();
-
-        } catch(IOException error) {
-            Log.warning(error);
+            return address;
         }
 
         return null;

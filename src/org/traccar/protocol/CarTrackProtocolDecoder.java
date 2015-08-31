@@ -16,22 +16,23 @@
  */
 package org.traccar.protocol;
 
-import java.util.Calendar;
+import java.net.SocketAddress;
+import java.util.Calendar; 
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.ServerManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class CarTrackProtocolDecoder extends BaseProtocolDecoder {
 
-    public CarTrackProtocolDecoder(ServerManager serverManager) {
-        super(serverManager);
+    public CarTrackProtocolDecoder(CarTrackProtocol protocol) {
+        super(protocol);
     }
 
     private static final Pattern pattern = Pattern.compile(
@@ -57,7 +58,7 @@ public class CarTrackProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
         String sentence = (String) msg;
@@ -70,20 +71,17 @@ public class CarTrackProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("cartrack");
+        position.setProtocol(getProtocolName());
         Integer index = 1;
 
         // Get device by unique identifier
-        String id = parser.group(index++);
-        try {
-            position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
-        } catch(Exception error) {
-            Log.warning("Unknown device - " + id);
+        if (!identify(parser.group(index++), channel)) {
             return null;
         }
+        position.setDeviceId(getDeviceId());
 
         // Command
-        extendedInfo.set("command", parser.group(index++));
+        position.set("command", parser.group(index++));
 
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -112,16 +110,12 @@ public class CarTrackProtocolDecoder extends BaseProtocolDecoder {
         String speed = parser.group(index++);
         if (speed != null) {
             position.setSpeed(Double.valueOf(speed));
-        } else {
-            position.setSpeed(0.0);
         }
 
         // Course
         String course = parser.group(index++);
         if (course != null) {
             position.setCourse(Double.valueOf(course));
-        } else {
-            position.setCourse(0.0);
         }
 
         // Date
@@ -129,28 +123,22 @@ public class CarTrackProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
         time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
         position.setTime(time.getTime());
-
-        // Altitude
-        position.setAltitude(0.0);
         
         // State
-        extendedInfo.set("io", parser.group(index++));
-        /* Start : Added By Rohit Singhal, Decode Milage Data*/
-        // Prepare Mile Meter Data
-        String milage = parser.group(index++);
-        milage = milage.replace(":", "A");
-        milage = milage.replace(";", "B");
-        milage = milage.replace("<", "C");
-        milage = milage.replace("=", "D");
-        milage = milage.replace(">", "E");
-        milage = milage.replace("?", "F");
-        extendedInfo.set("milage", Integer.parseInt(milage, 16));
-        /* Commented By Rohit extendedInfo.set("milage", parser.group(index++)); */
-        /*End : Added By Rohit Singhal, Decode Milage Data*/
-        extendedInfo.set("alarm", parser.group(index++));
-        extendedInfo.set("ad", parser.group(index++));
+        position.set(Event.PREFIX_IO + 1, parser.group(index++));
 
-        position.setExtendedInfo(extendedInfo.toString());
+        // Odometer
+        String odometer = parser.group(index++);
+        odometer = odometer.replace(":", "A");
+        odometer = odometer.replace(";", "B");
+        odometer = odometer.replace("<", "C");
+        odometer = odometer.replace("=", "D");
+        odometer = odometer.replace(">", "E");
+        odometer = odometer.replace("?", "F");
+        position.set(Event.KEY_ODOMETER, Integer.parseInt(odometer, 16));
+
+        position.set(Event.KEY_ALARM, parser.group(index++));
+        position.set("ad", parser.group(index++));
         return position;
     }
 
