@@ -32,7 +32,7 @@ public class XirgoProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "\\$\\$" +
             "(\\d+)," +                         // IMEI
             "(\\d+)," +                         // Event
@@ -59,7 +59,7 @@ public class XirgoProtocolDecoder extends BaseProtocolDecoder {
         String sentence = (String) msg;
 
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -77,24 +77,24 @@ public class XirgoProtocolDecoder extends BaseProtocolDecoder {
         position.setDeviceId(getDeviceId());
 
         position.set(Event.KEY_EVENT, parser.group(index++));
-        
+
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.YEAR, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Location
-        position.setLatitude(Double.valueOf(parser.group(index++)));
-        position.setLongitude(Double.valueOf(parser.group(index++)));
-        position.setAltitude(Double.valueOf(parser.group(index++)));
-        position.setSpeed(UnitsConverter.knotsFromMph(Double.valueOf(parser.group(index++))));
-        position.setCourse(Double.valueOf(parser.group(index++)));
+        position.setLatitude(Double.parseDouble(parser.group(index++)));
+        position.setLongitude(Double.parseDouble(parser.group(index++)));
+        position.setAltitude(Double.parseDouble(parser.group(index++)));
+        position.setSpeed(UnitsConverter.knotsFromMph(Double.parseDouble(parser.group(index++))));
+        position.setCourse(Double.parseDouble(parser.group(index++)));
 
         // Additional data
         position.set(Event.KEY_SATELLITES, parser.group(index++));
@@ -102,9 +102,9 @@ public class XirgoProtocolDecoder extends BaseProtocolDecoder {
         position.set(Event.KEY_BATTERY, parser.group(index++));
         position.set(Event.KEY_GSM, parser.group(index++));
         position.set(Event.KEY_ODOMETER, parser.group(index++));
-        
+
         // Validity
-        position.setValid(Integer.valueOf(parser.group(index++)) == 1);
+        position.setValid(Integer.parseInt(parser.group(index++)) == 1);
 
         return position;
     }

@@ -36,11 +36,11 @@ public class BceProtocolDecoder extends BaseProtocolDecoder {
 
     private static final int DATA_TYPE = 7;
 
-    private static final int MSG_ASYNC_STACK = 0xA5;
-    private static final int MSG_STACK_COFIRM = 0x19;
-    private static final int MSG_TIME_TRIGGERED = 0xA0;
-    private static final int MSG_OUTPUT_CONTROL = 0x41;
-    private static final int MSG_OUTPUT_CONTROL_ACK = 0xC1;
+    public static final int MSG_ASYNC_STACK = 0xA5;
+    public static final int MSG_STACK_COFIRM = 0x19;
+    public static final int MSG_TIME_TRIGGERED = 0xA0;
+    public static final int MSG_OUTPUT_CONTROL = 0x41;
+    public static final int MSG_OUTPUT_CONTROL_ACK = 0xC1;
 
     @Override
     protected Object decode(
@@ -48,7 +48,7 @@ public class BceProtocolDecoder extends BaseProtocolDecoder {
             throws Exception {
 
         ChannelBuffer buf = (ChannelBuffer) msg;
-        
+
         String imei = String.format("%015d", buf.readLong());
         if (!identify(imei, channel)) {
             return null;
@@ -113,10 +113,18 @@ public class BceProtocolDecoder extends BaseProtocolDecoder {
                         }
                     }
 
-                    if (BitUtil.check(mask, 10)) buf.skipBytes(4);
-                    if (BitUtil.check(mask, 11)) buf.skipBytes(4);
-                    if (BitUtil.check(mask, 12)) buf.skipBytes(2);
-                    if (BitUtil.check(mask, 13)) buf.skipBytes(2);
+                    if (BitUtil.check(mask, 10)) {
+                        buf.skipBytes(4);
+                    }
+                    if (BitUtil.check(mask, 11)) {
+                        buf.skipBytes(4);
+                    }
+                    if (BitUtil.check(mask, 12)) {
+                        buf.skipBytes(2);
+                    }
+                    if (BitUtil.check(mask, 13)) {
+                        buf.skipBytes(2);
+                    }
 
                     if (BitUtil.check(mask, 14)) {
                         position.set(Event.KEY_MCC, buf.readUnsignedShort());
@@ -138,7 +146,7 @@ public class BceProtocolDecoder extends BaseProtocolDecoder {
             // Send response
             if (type == MSG_ASYNC_STACK && channel != null) {
                 ChannelBuffer response = ChannelBuffers.buffer(ByteOrder.LITTLE_ENDIAN, 8 + 2 + 2 + 1);
-                response.writeLong(Long.valueOf(imei));
+                response.writeLong(Long.parseLong(imei));
                 response.writeShort(2);
                 response.writeByte(MSG_STACK_COFIRM);
                 response.writeByte(confirmKey);

@@ -15,19 +15,17 @@
  */
 package org.traccar.protocol;
 
+import java.net.SocketAddress;
+import java.text.ParseException;
+import java.util.Calendar;
+import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
-
-import java.text.ParseException;
-import java.net.SocketAddress;
-import java.util.Calendar; 
-import java.util.TimeZone;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class Xt013ProtocolDecoder extends BaseProtocolDecoder {
 
@@ -35,7 +33,7 @@ public class Xt013ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "(?:HI,\\d+)?" +
             "TK," +
             "(\\d+)," +                         // IMEI
@@ -65,7 +63,7 @@ public class Xt013ProtocolDecoder extends BaseProtocolDecoder {
 
         // Parse message
         String sentence = (String) msg;
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             throw new ParseException(null, 0);
         }
@@ -85,20 +83,20 @@ public class Xt013ProtocolDecoder extends BaseProtocolDecoder {
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Location
-        position.setLatitude(Double.valueOf(parser.group(index++)));
-        position.setLongitude(Double.valueOf(parser.group(index++)));
-        position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(parser.group(index++))));
-        position.setCourse(Double.valueOf(parser.group(index++)));
-        position.setAltitude(Double.valueOf(parser.group(index++)));
+        position.setLatitude(Double.parseDouble(parser.group(index++)));
+        position.setLongitude(Double.parseDouble(parser.group(index++)));
+        position.setSpeed(UnitsConverter.knotsFromKph(Double.parseDouble(parser.group(index++))));
+        position.setCourse(Double.parseDouble(parser.group(index++)));
+        position.setAltitude(Double.parseDouble(parser.group(index++)));
         position.setValid(parser.group(index++).equals("F"));
 
         // Other

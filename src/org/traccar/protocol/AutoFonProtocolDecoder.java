@@ -34,14 +34,14 @@ public class AutoFonProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final int MSG_LOGIN = 0x10;
-    private static final int MSG_LOCATION = 0x11;
-    private static final int MSG_HISTORY = 0x12;
+    public static final int MSG_LOGIN = 0x10;
+    public static final int MSG_LOCATION = 0x11;
+    public static final int MSG_HISTORY = 0x12;
 
     private static double convertCoordinate(int raw) {
-        double result = raw / 1000000;
-        result += (raw % 1000000) / 600000.0;
-        return result;
+        int degrees = raw / 1000000;
+        double minutes = (raw % 1000000) / 10000.0;
+        return degrees + minutes / 60;
     }
 
     private Position decodePosition(ChannelBuffer buf, boolean history) {
@@ -129,7 +129,7 @@ public class AutoFonProtocolDecoder extends BaseProtocolDecoder {
 
             // Send response
             if (channel != null) {
-                channel.write(ChannelBuffers.wrappedBuffer(new byte[] { buf.readByte() }));
+                channel.write(ChannelBuffers.wrappedBuffer(new byte[] {buf.readByte()}));
             }
 
         } else if (type == MSG_LOCATION) {

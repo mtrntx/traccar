@@ -15,14 +15,14 @@
  */
 package org.traccar.protocol;
 
-import java.nio.charset.Charset;
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.nio.charset.Charset;
+import java.util.Calendar;
 import java.util.TimeZone;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
+import org.traccar.Context;
 import org.traccar.helper.BitUtil;
 import org.traccar.helper.Log;
 import org.traccar.model.Event;
@@ -30,21 +30,24 @@ import org.traccar.model.Position;
 
 public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
 
+    private final long defaultMask;
+
     public SkypatrolProtocolDecoder(SkypatrolProtocol protocol) {
         super(protocol);
+        defaultMask = Context.getConfig().getInteger(getProtocolName() + ".mask");
     }
 
     private static double convertCoordinate(long coordinate) {
         int sign = 1;
-        if (coordinate > 0x7fffffffl) {
+        if (coordinate > 0x7fffffffL) {
             sign = -1;
-            coordinate = 0xffffffffl - coordinate;
+            coordinate = 0xffffffffL - coordinate;
         }
 
-        double degrees = coordinate / 1000000;
-        degrees += (coordinate % 1000000) / 600000.0;
+        long degrees = coordinate / 1000000;
+        double minutes = (coordinate % 1000000) / 10000.0;
 
-        return sign * degrees;
+        return sign * (degrees + minutes / 60);
     }
 
     @Override
@@ -59,7 +62,7 @@ public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
         int commandType = buf.readUnsignedByte();
         int messageType = buf.getUnsignedByte(buf.readerIndex()) >> 4;
         boolean needAck = (buf.readUnsignedByte() & 0xf) == 1;
-        long mask = 0;
+        long mask = defaultMask;
         if (buf.readUnsignedByte() == 4) {
             mask = buf.readUnsignedInt();
         }

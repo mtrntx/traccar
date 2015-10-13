@@ -17,14 +17,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -35,7 +32,7 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             ".*" +
             "\\$[A-Z]{3}\\d?," +                // Type
             "(\\d+)," +                         // Id
@@ -51,7 +48,7 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
             "./" +
             "([01])+," +                        // Input
             "([01])+/" +                        // Output
-            "([^/]+)/" +                        // ADC
+            "([^/]+)?/" +                       // ADC
             "(\\d+)" +                          // Odometer
             "(?:/([^/]+)?/" +                   // RFID
             "(\\p{XDigit}{3}))?" +              // State
@@ -65,7 +62,7 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
         String sentence = (String) msg;
 
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -85,25 +82,25 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MILLISECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MILLISECOND, Integer.parseInt(parser.group(index++)));
 
         // Validity
         position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Latitude
-        Double latitude = Double.valueOf(parser.group(index++));
-        latitude += Double.valueOf(parser.group(index++)) / 60;
+        Double latitude = Double.parseDouble(parser.group(index++));
+        latitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("S") == 0) {
             latitude = -latitude;
         }
         position.setLatitude(latitude);
 
         // Longitude
-        Double longitude = Double.valueOf(parser.group(index++));
-        longitude += Double.valueOf(parser.group(index++)) / 60;
+        Double longitude = Double.parseDouble(parser.group(index++));
+        longitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("W") == 0) {
             longitude = -longitude;
         }
@@ -112,19 +109,19 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
         // Speed
         String speed = parser.group(index++);
         if (speed != null) {
-            position.setSpeed(Double.valueOf(speed));
+            position.setSpeed(Double.parseDouble(speed));
         }
 
         // Course
         String course = parser.group(index++);
         if (course != null) {
-            position.setCourse(Double.valueOf(course));
+            position.setCourse(Double.parseDouble(course));
         }
 
         // Date
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // IO

@@ -16,17 +16,14 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
-
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.Crc;
+import org.traccar.helper.Checksum;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -43,17 +40,17 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
         int b3 = buf.readUnsignedByte(); if (b3 > 0x80) b3 -= 0x80;
         int b4 = buf.readUnsignedByte();
         String serialNumber = String.format("%02d%02d%02d%02d", b1, b2, b3, b4);
-        return String.valueOf(Long.valueOf(serialNumber));
+        return String.valueOf(Long.parseLong(serialNumber));
     }
 
-    private static final int MSG_LOGIN = 0xB1;
-    private static final int MSG_CONFIRMATION = 0x21;
-    private static final int MSG_ON_DEMAND = 0x81;
-    private static final int MSG_POSITION_UPLOAD = 0x80;
-    private static final int MSG_POSITION_REUPLOAD = 0x8E;
-    private static final int MSG_ALARM = 0x82;
-    private static final int MSG_REPLY = 0x85;
-    private static final int MSG_PERIPHERAL = 0xA3;
+    public static final int MSG_LOGIN = 0xB1;
+    public static final int MSG_CONFIRMATION = 0x21;
+    public static final int MSG_ON_DEMAND = 0x81;
+    public static final int MSG_POSITION_UPLOAD = 0x80;
+    public static final int MSG_POSITION_REUPLOAD = 0x8E;
+    public static final int MSG_ALARM = 0x82;
+    public static final int MSG_REPLY = 0x85;
+    public static final int MSG_PERIPHERAL = 0xA3;
 
     @Override
     protected Object decode(
@@ -103,33 +100,32 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
             // Flags
             int flags = buf.readUnsignedByte();
             position.setValid((flags & 0x80) != 0);
-            
+
             if (type == MSG_ALARM) {
-                
+
                 buf.skipBytes(2);
 
             } else {
 
                 // Odometer
                 position.set(Event.KEY_ODOMETER, buf.readUnsignedMedium());
-            
+
                 // Status
                 buf.skipBytes(4);
-                
+
                 // Other
                 buf.skipBytes(8);
 
             }
-            
+
             // TODO: parse extra data
             return position;
-        }
 
-        else if (type == MSG_LOGIN && channel != null) {
-            
+        } else if (type == MSG_LOGIN && channel != null) {
+
             buf.skipBytes(4); // serial number
             buf.readByte(); // reserved
-            
+
             ChannelBuffer response = ChannelBuffers.dynamicBuffer();
             response.writeByte(0x29); response.writeByte(0x29); // header
             response.writeByte(MSG_CONFIRMATION);
@@ -137,12 +133,12 @@ public class KhdProtocolDecoder extends BaseProtocolDecoder {
             response.writeByte(buf.readUnsignedByte());
             response.writeByte(type);
             response.writeByte(0); // reserved
-            response.writeByte(Crc.xorChecksum(response.toByteBuffer()));
+            response.writeByte(Checksum.xor(response.toByteBuffer()));
             response.writeByte(0x0D); // ending
             channel.write(response);
 
         }
-        
+
         return null;
     }
 

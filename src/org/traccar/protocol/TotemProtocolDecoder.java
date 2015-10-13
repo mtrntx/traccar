@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 - 2014 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2013 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,13 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
+import org.traccar.helper.PatternBuilder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
 
@@ -31,40 +32,40 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern patternFirst = Pattern.compile(
-            "\\$\\$" +                          // Header
-            "\\p{XDigit}{2}" +                  // Length
-            "(\\d+)\\|" +                       // IMEI
-            "(..)" +                            // Alarm Type
-            "\\$GPRMC," +
-            "(\\d{2})(\\d{2})(\\d{2})\\.\\d+," + // Time (HHMMSS.SS)
-            "([AV])," +                         // Validity
-            "(\\d+)(\\d{2}\\.\\d+)," +          // Latitude (DDMM.MMMM)
-            "([NS])," +
-            "(\\d+)(\\d{2}\\.\\d+)," +          // Longitude (DDDMM.MMMM)
-            "([EW])," +
-            "(\\d+\\.?\\d*)?," +                // Speed
-            "(\\d+\\.?\\d*)?," +                // Course
-            "(\\d{2})(\\d{2})(\\d{2})" +        // Date (DDMMYY)
-            "[^\\*]+\\*\\p{XDigit}{2}\\|" +     // Checksum
-            "\\d+\\.\\d+\\|" +                  // PDOP
-            "(\\d+\\.\\d+)\\|" +                // HDOP
-            "\\d+\\.\\d+\\|" +                  // VDOP
-            "(\\d+)\\|" +                       // IO Status
-            "\\d+\\|" +                         // Time
-            "\\d" +                             // Charged
-            "(\\d{3})" +                        // Battery
-            "(\\d{4})\\|" +                     // External Power
-            "(?:(\\d+)\\|)?" +                  // ADC
-            "(\\p{XDigit}+)\\|" +               // Location Code
-            "(\\d+)\\|" +                       // Temperature
-            "(\\d+.\\d+)\\|" +                  // Odometer
-            "\\d+\\|" +                         // Serial Number
-            ".*\\|?" +
-            "\\p{XDigit}{4}" +                  // Checksum
-            "\r?\n?");
+    private static final Pattern PATTERN1 = new PatternBuilder()
+            .txt("$$")                           // header
+            .num("xx")                           // length
+            .num("(d+)|")                        // imei
+            .xpr("(..)")                         // alarm
+            .txt("$GPRMC,")
+            .num("(dd)(dd)(dd).d+,")             // time
+            .xpr("([AV]),")                      // validity
+            .num("(d+)(dd.d+),([NS]),")          // latitude
+            .num("(d+)(dd.d+),([EW]),")          // longitude
+            .num("(d+.?d*)?,")                   // speed
+            .num("(d+.?d*)?,")                   // course
+            .num("(dd)(dd)(dd)")                 // date
+            .nxt("*")
+            .num("xx|")                          // checksum
+            .num("d+.d+|")                       // pdop
+            .num("(d+.d+)|")                     // hdop
+            .num("d+.d+|")                       // vdop
+            .num("(d+)|")                        // io status
+            .num("d+|")                          // time
+            .num("d")                            // charged
+            .num("(ddd)")                        // battery
+            .num("(dddd)|")                      // power
+            .opn("(d+)|")                        // adc
+            .num("(x+)|")                        // location code
+            .num("(d+)|")                        // temperature
+            .num("(d+.d+)|")                     // odometer
+            .num("d+|")                          // serial number
+            .any()
+            .num("xxxx")                         // checksum
+            .any()
+            .compile();
 
-    private static final Pattern patternSecond = Pattern.compile(
+    private static final Pattern PATTERN2 = Pattern.compile(
             "\\$\\$" +                          // Header
             "\\p{XDigit}{2}" +                  // Length
             "(\\d+)\\|" +                       // IMEI
@@ -91,7 +92,7 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             "\\p{XDigit}{4}" +                  // Checksum
             "\r?\n?");
 
-    private static final Pattern patternThird = Pattern.compile(
+    private static final Pattern PATTERN3 = Pattern.compile(
             "\\$\\$" +                          // Header
             "\\p{XDigit}{2}" +                  // Length
             "(\\d+)\\|" +                       // IMEI
@@ -121,39 +122,26 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             "\\p{XDigit}{4}" +                  // Checksum
             "\r?\n?");
 
-    private enum MessageFormat {
-        first,
-        second,
-        third
-    }
-    
     @Override
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
-        
+
         String sentence = (String) msg;
 
         // Determine format
-        MessageFormat format = MessageFormat.third;
+        Pattern pattern = PATTERN3;
         if (sentence.contains("$GPRMC")) {
-            format = MessageFormat.first;
+            pattern = PATTERN1;
         } else {
             int index = sentence.indexOf('|');
             if (index != -1 && sentence.indexOf('|', index + 1) != -1) {
-                format = MessageFormat.second;
+                pattern = PATTERN2;
             }
         }
 
         // Parse message
-        Matcher parser = null;
-        if (format == MessageFormat.first) {
-            parser = patternFirst.matcher(sentence);
-        } else if (format == MessageFormat.second) {
-            parser = patternSecond.matcher(sentence);
-        } else if (format == MessageFormat.third) {
-            parser = patternThird.matcher(sentence);
-        }
+        Matcher parser = pattern.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -169,58 +157,58 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
         position.setDeviceId(getDeviceId());
-        
+
         // Alarm type
         position.set(Event.KEY_ALARM, parser.group(index++));
-        
-        if (format == MessageFormat.first || format == MessageFormat.second) {
+
+        if (pattern == PATTERN1 || pattern == PATTERN2) {
 
             // Time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
             int year = 0;
-            if (format == MessageFormat.second) {
-                time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-                time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-                year = Integer.valueOf(parser.group(index++));
+            if (pattern == PATTERN2) {
+                time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+                time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+                year = Integer.parseInt(parser.group(index++));
                 time.set(Calendar.YEAR, 2000 + year);
             }
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
 
             // Validity
             position.setValid(parser.group(index++).compareTo("A") == 0);
 
             // Latitude
-            Double latitude = Double.valueOf(parser.group(index++));
-            latitude += Double.valueOf(parser.group(index++)) / 60;
+            Double latitude = Double.parseDouble(parser.group(index++));
+            latitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
             position.setLatitude(latitude);
 
             // Longitude
-            Double longitude = Double.valueOf(parser.group(index++));
-            longitude += Double.valueOf(parser.group(index++)) / 60;
+            Double longitude = Double.parseDouble(parser.group(index++));
+            longitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
             position.setLongitude(longitude);
 
             // Speed
             String speed = parser.group(index++);
             if (speed != null) {
-                position.setSpeed(Double.valueOf(speed));
+                position.setSpeed(Double.parseDouble(speed));
             }
 
             // Course
             String course = parser.group(index++);
             if (course != null) {
-                position.setCourse(Double.valueOf(course));
+                position.setCourse(Double.parseDouble(course));
             }
 
             // Date
-            if (format == MessageFormat.first) {
-                time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-                time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-                year = Integer.valueOf(parser.group(index++));
+            if (pattern == PATTERN1) {
+                time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+                time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+                year = Integer.parseInt(parser.group(index++));
                 time.set(Calendar.YEAR, 2000 + year);
             }
             if (year == 0) {
@@ -236,7 +224,7 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
 
             // Power
             position.set(Event.KEY_BATTERY, parser.group(index++));
-            position.set(Event.KEY_POWER, Double.valueOf(parser.group(index++)));
+            position.set(Event.KEY_POWER, Double.parseDouble(parser.group(index++)));
 
             // ADC
             position.set(Event.PREFIX_ADC + 1, parser.group(index++));
@@ -249,26 +237,26 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
 
             // Odometer
             position.set(Event.KEY_ODOMETER, parser.group(index++));
-        
-        } else if (format == MessageFormat.third) {
+
+        } else if (pattern == PATTERN3) {
 
             // Time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+            time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
             position.setTime(time.getTime());
-            
+
             // IO Status
             position.set(Event.PREFIX_IO + 1, parser.group(index++));
 
             // Power
-            position.set(Event.KEY_BATTERY, Double.valueOf(parser.group(index++)) / 10);
-            position.set(Event.KEY_POWER, Double.valueOf(parser.group(index++)));
+            position.set(Event.KEY_BATTERY, Double.parseDouble(parser.group(index++)) / 10);
+            position.set(Event.KEY_POWER, Double.parseDouble(parser.group(index++)));
 
             // ADC
             position.set(Event.PREFIX_ADC + 1, parser.group(index++));
@@ -288,10 +276,10 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             position.set(Event.KEY_SATELLITES, parser.group(index++));
 
             // Course
-            position.setCourse(Double.valueOf(parser.group(index++)));
+            position.setCourse(Double.parseDouble(parser.group(index++)));
 
             // Speed
-            position.setSpeed(Double.valueOf(parser.group(index++)));
+            position.setSpeed(Double.parseDouble(parser.group(index++)));
 
             // PDOP
             position.set("pdop", parser.group(index++));
@@ -300,19 +288,19 @@ public class TotemProtocolDecoder extends BaseProtocolDecoder {
             position.set(Event.KEY_ODOMETER, parser.group(index++));
 
             // Latitude
-            Double latitude = Double.valueOf(parser.group(index++));
-            latitude += Double.valueOf(parser.group(index++)) / 60;
+            Double latitude = Double.parseDouble(parser.group(index++));
+            latitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
             position.setLatitude(latitude);
 
             // Longitude
-            Double longitude = Double.valueOf(parser.group(index++));
-            longitude += Double.valueOf(parser.group(index++)) / 60;
+            Double longitude = Double.parseDouble(parser.group(index++));
+            longitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
             position.setLongitude(longitude);
-        
+
         }
-        
+
         if (channel != null) {
             channel.write("ACK OK\r\n");
         }

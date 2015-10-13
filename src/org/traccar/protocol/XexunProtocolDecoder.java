@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2014 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,68 +16,62 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
+import org.traccar.helper.PatternBuilder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class XexunProtocolDecoder extends BaseProtocolDecoder {
 
-    private boolean full;
+    private final boolean full;
 
     public XexunProtocolDecoder(XexunProtocol protocol, boolean full) {
         super(protocol);
         this.full = full;
     }
 
-    static private Pattern patternBasic = Pattern.compile(
-            "G[PN]RMC," +
-            "(\\d{2})(\\d{2})(\\d{2})\\.(\\d+)," + // Time (HHMMSS.SSS)
-            "([AV])," +                         // Validity
-            "(\\d+)(\\d{2}\\.\\d+)," +          // Latitude (DDMM.MMMM)
-            "([NS])," +
-            "(\\d+)(\\d{2}\\.\\d+)," +          // Longitude (DDDMM.MMMM)
-            "([EW])?," +
-            "(\\d+\\.?\\d*)," +                 // Speed
-            "(\\d+\\.?\\d*)?," +                // Course
-            "(\\d{2})(\\d{2})(\\d{2})," +       // Date (DDMMYY)
-            "[^\\*]*\\*..,"       +             // Checksum
-            "([FL])," +                         // Signal
-            "(?:([^,]*),)?" +                   // Alarm
-            ".*imei:" +
-            "(\\d+),");                         // IMEI
+    private static final Pattern PATTERN_BASIC = new PatternBuilder()
+            .xpr("G[PN]RMC,")
+            .num("(dd)(dd)(dd).(d+),")           // time
+            .xpr("([AV]),")                      // validity
+            .num("(d+)(dd.d+),([NS]),")          // latitude
+            .num("(d+)(dd.d+),([EW])?,")         // longitude
+            .num("(d+.?d*),")                    // speed
+            .num("(d+.?d*)?,")                   // course
+            .num("(dd)(dd)(dd),")                // date
+            .nxt("*")
+            .num("xx,")                          // checksum
+            .xpr("([FL]),")                      // signal
+            .opx("([^,]*),")                     // alarm
+            .any()
+            .num("imei:(d+),")                   // imei
+            .compile();
 
-    static private Pattern patternFull = Pattern.compile(
-            "[\r\n]*" +
-            "(\\d+)," +                         // Serial
-            "([^,]+)?," +                       // Number
-            patternBasic.pattern() +
-            "(\\d+)," +                         // Satellites
-            "(-?\\d+\\.\\d+)?," +               // Altitude
-            "[FL]:(\\d+\\.\\d+)V" +             // Power
-            ".*" +
-            "[\r\n]*");
+    private static final Pattern PATTERN_FULL = new PatternBuilder()
+            .any()
+            .num("(d+),")                        // serial
+            .xpr("([^,]+)?,")                    // phone number
+            .xpr(PATTERN_BASIC.pattern())
+            .num("(d+),")                        // satellites
+            .num("(-?d+.d+)?,")                  // altitude
+            .num("[FL]:(d+.d+)V")                // power
+            .any()
+            .compile();
 
     @Override
-    protected Object decode(
-            Channel channel, SocketAddress remoteAddress, Object msg)
-            throws Exception {
+    protected Object decode(Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
 
-        // Parse message
-        Pattern pattern = full ? patternFull : patternBasic;
+        Pattern pattern = full ? PATTERN_FULL : PATTERN_BASIC;
         Matcher parser = pattern.matcher((String) msg);
         if (!parser.matches()) {
             return null;
         }
 
-        // Create new position
         Position position = new Position();
         position.setProtocol(getProtocolName());
 
@@ -91,42 +85,42 @@ public class XexunProtocolDecoder extends BaseProtocolDecoder {
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MILLISECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MILLISECOND, Integer.parseInt(parser.group(index++)));
 
         // Validity
         position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Latitude
-        Double latitude = Double.valueOf(parser.group(index++));
-        latitude += Double.valueOf(parser.group(index++)) / 60;
+        Double latitude = Double.parseDouble(parser.group(index++));
+        latitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
         position.setLatitude(latitude);
 
         // Longitude
-        Double longitude = Double.valueOf(parser.group(index++));
-        longitude += Double.valueOf(parser.group(index++)) / 60;
+        Double longitude = Double.parseDouble(parser.group(index++));
+        longitude += Double.parseDouble(parser.group(index++)) / 60;
         String hemisphere = parser.group(index++);
-        if (hemisphere != null) {
-            if (hemisphere.compareTo("W") == 0) longitude = -longitude;
+        if (hemisphere != null && hemisphere.compareTo("W") == 0) {
+            longitude = -longitude;
         }
         position.setLongitude(longitude);
 
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)));
+        position.setSpeed(Double.parseDouble(parser.group(index++)));
 
         // Course
         String course = parser.group(index++);
         if (course != null) {
-            position.setCourse(Double.valueOf(course));
+            position.setCourse(Double.parseDouble(course));
         }
 
         // Date
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Signal
@@ -144,16 +138,16 @@ public class XexunProtocolDecoder extends BaseProtocolDecoder {
         if (full) {
 
             // Satellites
-            position.set(Event.KEY_SATELLITES, parser.group(index++).replaceFirst ("^0*(?![\\.$])", ""));
+            position.set(Event.KEY_SATELLITES, parser.group(index++).replaceFirst("^0*(?![\\.$])", ""));
 
             // Altitude
             String altitude = parser.group(index++);
             if (altitude != null) {
-                position.setAltitude(Double.valueOf(altitude));
+                position.setAltitude(Double.parseDouble(altitude));
             }
 
             // Power
-            position.set(Event.KEY_POWER, Double.valueOf(parser.group(index++)));
+            position.set(Event.KEY_POWER, Double.parseDouble(parser.group(index++)));
         }
 
         return position;

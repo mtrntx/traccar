@@ -16,7 +16,11 @@
 package org.traccar;
 
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.*;
+import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.ChannelPipeline;
+import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.SimpleChannelHandler;
 import org.jboss.netty.handler.codec.frame.FrameDecoder;
 import org.jboss.netty.handler.codec.string.StringDecoder;
 import org.traccar.helper.Log;
@@ -27,8 +31,8 @@ import java.util.List;
 
 public class DetectorHandler extends SimpleChannelHandler {
 
-    private List<TrackerServer> serverList;
-    
+    private final List<TrackerServer> serverList;
+
     private boolean showFailed;
 
     DetectorHandler(List<TrackerServer> serverList) {
@@ -100,7 +104,7 @@ public class DetectorHandler extends SimpleChannelHandler {
                     if (!server.getProtocol().equals("detector")) {
                         checkPipeline(server.getProtocol(), server.getPipelineFactory().getPipeline(), buf);
                     }
-                } catch(Exception error) {
+                } catch (Exception error) {
                     if (showFailed) {
                         Log.info("Protocol " + server.getProtocol() + " error");
                     }

@@ -16,28 +16,29 @@
 
 Ext.define('Traccar.ErrorManager', {
     singleton: true,
-    
-    check: function(success, response) {
+
+    check: function (success, response) {
+        var result;
         if (success) {
-            var result = Ext.decode(response.responseText);
+            result = Ext.decode(response.responseText);
             if (result.success || result.error === undefined) {
                 return true;
             } else {
-                Ext.Msg.alert(strings.errorTitle, result.error);
+                Ext.Msg.alert(Strings.errorTitle, result.error);
                 return false;
             }
         } else {
             if (response.statusText) {
-                Ext.Msg.alert(strings.errorTitle, response.statusText);
+                Ext.Msg.alert(Strings.errorTitle, response.statusText);
             } else {
-                Ext.Msg.alert(strings.errorTitle, response.status.toString()); // TODO: text message
+                Ext.Msg.alert(Strings.errorTitle, response.status.toString()); // TODO: text message
             }
             return false;
         }
     },
 
-    error: function(message) {
-        Ext.Msg.alert(strings.errorTitle, message);
+    error: function (message) {
+        Ext.Msg.alert(Strings.errorTitle, message);
     }
 
 });

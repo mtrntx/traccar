@@ -36,14 +36,14 @@ import org.jboss.netty.logging.InternalLoggerFactory;
 import org.traccar.Config;
 
 public class Log {
-    
+
     private static final String LOGGER_NAME = "traccar";
 
     private static final String STACK_PACKAGE = "org.traccar";
     private static final int STACK_LIMIT = 3;
 
     private static Logger logger = null;
-    
+
     public static void setupLogger(Config config) throws IOException {
 
         Layout layout = new PatternLayout("%d{yyyy-MM-dd HH:mm:ss} %5p: %m%n");
@@ -53,7 +53,7 @@ public class Log {
 
         LogManager.resetConfiguration();
         LogManager.getRootLogger().addAppender(new NullAppender());
-        
+
         logger = Logger.getLogger(LOGGER_NAME);
         logger.addAppender(appender);
         logger.setLevel(Level.toLevel(config.getString("logger.level"), Level.ALL));
@@ -77,7 +77,7 @@ public class Log {
         }
         return logger;
     }
-    
+
     public static void logSystemInfo() {
         try {
             OperatingSystemMXBean operatingSystemBean = ManagementFactory.getOperatingSystemMXBean();
@@ -104,7 +104,7 @@ public class Log {
             Log.warning("Failed to get system info");
         }
     }
-    
+
     public static void error(String msg) {
         getLogger().error(msg);
     }
@@ -169,13 +169,13 @@ public class Log {
                     }
 
                     if (file.equals(element.getFileName())) {
-                        s.append("*:");
+                        s.append("*");
                     } else {
                         file = element.getFileName();
-                        s.append(file).append(":");
+                        s.append(file.substring(0, file.length() - 5)); // remove ".java"
                         count -= 1;
                     }
-                    s.append(element.getLineNumber());
+                    s.append(":").append(element.getLineNumber());
                 } else {
                     skip = true;
                 }

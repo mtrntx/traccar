@@ -29,28 +29,26 @@ public class MainEventHandler extends IdleStateAwareChannelHandler {
 
     @Override
     public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
-        
-        if (e.getMessage() != null) {
-            if (e.getMessage() instanceof Position) {
 
-                Position position = (Position) e.getMessage();
+        if (e.getMessage() != null && e.getMessage() instanceof Position) {
 
-                // Log position
-                StringBuilder s = new StringBuilder();
-                s.append(formatChannel(e.getChannel())).append(" ");
-                s.append("id: ").append(position.getDeviceId()).append(", ");
-                s.append("time: ").append(position.getFixTime()).append(", ");
-                s.append("lat: ").append(position.getLatitude()).append(", ");
-                s.append("lon: ").append(position.getLongitude()).append(", ");
-                s.append("speed: ").append(position.getSpeed()).append(", ");
-                s.append("course: ").append(position.getCourse());
-                Log.info(s.toString());
+            Position position = (Position) e.getMessage();
 
-                Context.getConnectionManager().update(position);
-            }
+            // Log position
+            StringBuilder s = new StringBuilder();
+            s.append(formatChannel(e.getChannel())).append(" ");
+            s.append("id: ").append(position.getDeviceId()).append(", ");
+            s.append("time: ").append(position.getFixTime()).append(", ");
+            s.append("lat: ").append(position.getLatitude()).append(", ");
+            s.append("lon: ").append(position.getLongitude()).append(", ");
+            s.append("speed: ").append(position.getSpeed()).append(", ");
+            s.append("course: ").append(position.getCourse());
+            Log.info(s.toString());
+
+            Context.getConnectionManager().update(position);
         }
     }
-    
+
     private static String formatChannel(Channel channel) {
         return String.format("[%08X]", channel.getId());
     }
@@ -64,7 +62,7 @@ public class MainEventHandler extends IdleStateAwareChannelHandler {
     public void channelDisconnected(ChannelHandlerContext ctx, ChannelStateEvent e) {
         Log.info(formatChannel(e.getChannel()) + " disconnected");
         e.getChannel().close();
-        
+
         Context.getConnectionManager().removeActiveDevice(e.getChannel());
     }
 

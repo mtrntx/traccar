@@ -15,14 +15,13 @@
  */
 package org.traccar;
 
-import org.traccar.model.Command;
-
 import java.util.Map;
+import org.traccar.model.Command;
 
 public abstract class StringProtocolEncoder extends BaseProtocolEncoder {
 
     public interface ValueFormatter {
-        public String formatValue(String key, Object value);
+        String formatValue(String key, Object value);
     }
 
     protected String formatCommand(Command command, String format, ValueFormatter valueFormatter, String... keys) {
@@ -30,7 +29,7 @@ public abstract class StringProtocolEncoder extends BaseProtocolEncoder {
         String result = String.format(format, (Object[]) keys);
 
         result = result.replaceAll("\\{" + Command.KEY_UNIQUE_ID + "}", getUniqueId(command.getDeviceId()));
-        for (Map.Entry<String, Object> entry : command.getOther().entrySet()) {
+        for (Map.Entry<String, Object> entry : command.getAttributes().entrySet()) {
             String value = null;
             if (valueFormatter != null) {
                 value = valueFormatter.formatValue(entry.getKey(), entry.getValue());

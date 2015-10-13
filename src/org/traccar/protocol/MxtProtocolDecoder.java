@@ -16,12 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.Date;
 import java.util.TimeZone;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.helper.BitUtil;
 import org.traccar.helper.UnitsConverter;
@@ -34,9 +33,9 @@ public class MxtProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final int MSG_ACK = 0x02;
-    private static final int MSG_NACK = 0x03;
-    private static final int MSG_POSITION = 0x31;
+    public static final int MSG_ACK = 0x02;
+    public static final int MSG_NACK = 0x03;
+    public static final int MSG_POSITION = 0x31;
 
     @Override
     protected Object decode(
@@ -100,16 +99,16 @@ public class MxtProtocolDecoder extends BaseProtocolDecoder {
 
             position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedByte()));
 
-            int inputMask = buf.readUnsignedByte();
-            
+            buf.readUnsignedByte(); // input mask
+
             if (BitUtil.check(infoGroups, 0)) {
                 buf.skipBytes(8); // waypoints
             }
-            
+
             if (BitUtil.check(infoGroups, 1)) {
                 buf.skipBytes(8); // wireless accessory
             }
-            
+
             if (BitUtil.check(infoGroups, 2)) {
                 position.set(Event.KEY_SATELLITES, buf.readUnsignedByte());
                 position.set(Event.KEY_HDOP, buf.readUnsignedByte());
@@ -119,24 +118,24 @@ public class MxtProtocolDecoder extends BaseProtocolDecoder {
                 buf.readUnsignedByte(); // input voltage
                 position.set(Event.PREFIX_TEMP + 1, buf.readByte());
             }
-            
+
             if (BitUtil.check(infoGroups, 3)) {
                 position.set(Event.KEY_ODOMETER, buf.readUnsignedInt());
             }
-            
+
             if (BitUtil.check(infoGroups, 4)) {
-                buf.readUnsignedInt(); // hours
+                position.set("hours", buf.readUnsignedInt());
             }
-            
+
             if (BitUtil.check(infoGroups, 5)) {
                 buf.readUnsignedInt(); // reason
             }
-            
+
             if (BitUtil.check(infoGroups, 6)) {
                 position.set(Event.KEY_POWER, buf.readUnsignedShort() * 0.001);
                 position.set(Event.KEY_BATTERY, buf.readUnsignedShort());
             }
-            
+
             if (BitUtil.check(infoGroups, 7)) {
                 position.set(Event.KEY_RFID, buf.readUnsignedInt());
             }

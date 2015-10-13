@@ -1,4 +1,4 @@
-var strings = {
+var Strings = {
     sharedLoading: 'Loading...',
     sharedSave: 'Save',
     sharedCancel: 'Cancel',
@@ -73,12 +73,13 @@ var strings = {
     mapBingAerial: 'Bing Maps Aerial',
 
     stateTitle: 'State',
-    stateName: 'Parameter',
+    stateName: 'Attribute',
     stateValue: 'Value',
 
     commandTitle: 'Command',
     commandSend: 'Send',
     commandType: 'Type',
+    commandSent: 'Command has been sent',
     commandPositionPeriodic: 'Periodic Reporting',
     commandPositionStop: 'Stop Reporting',
     commandEngineStop: 'Engine Stop',

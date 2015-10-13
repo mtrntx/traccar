@@ -33,13 +33,13 @@ public class Gl200ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern heartbeatPattern = Pattern.compile(
-            "\\+ACK\\:GTHBD," +
+    private static final Pattern PATTERN_HEARTBEAT = Pattern.compile(
+            "\\+ACK:GTHBD," +
             "([0-9A-Z]{2}\\p{XDigit}{4})," +
             ".*," +
             "(\\p{XDigit}{4})\\$?");
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "(?:(?:\\+(?:RESP|BUFF):)|" +
             "(?:\\x00?\\x04,\\p{XDigit}{4},[01],))" +
             "GT...," +
@@ -54,19 +54,19 @@ public class Gl200ProtocolDecoder extends BaseProtocolDecoder {
             "[01]," +                           // ODB connect
             "\\d{1,5}," +                       // ODB voltage
             "\\p{XDigit}{8}," +                 // Support PIDs
-            "\\d{1,5}," +                       // Engine RPM
-            "\\d{1,3}," +                       // Speed
-            "-?\\d{1,3}," +                     // Coolant temp
+            "(\\d{1,5})," +                     // Engine RPM
+            "(\\d{1,3})," +                     // Speed
+            "(-?\\d{1,3})," +                   // Coolant temp
             "(\\d+\\.?\\d*|Inf|NaN)?," +        // Fuel consumption
-            "\\d{1,5}," +                       // Odometer
+            "(\\d{1,5})," +                     // DTCs cleared distance
             "\\d{1,5}," +
-            "[01]," +                           // ODB connect
-            "\\d{1,3}," +                       // Number of DTCs
-            "\\p{XDigit}*," +                   // DTCs
-            "\\d{1,3}," +                       // Throttle
+            "([01])," +                         // ODB connect
+            "(\\d{1,3})," +                     // Number of DTCs
+            "(\\p{XDigit}*)," +                 // DTCs
+            "(\\d{1,3})," +                     // Throttle
             "\\d{1,3}," +                       // Engine load
-            "(\\d{1,3})?,"+                     // Fuel level
-            "\\d+|.*)," +                       // Odometer
+            "(\\d{1,3})?," +                    // Fuel level
+            "(\\d+)|.*)," +                     // Odometer
 
             "(\\d*)," +                         // GPS accuracy
             "(\\d+.\\d)?," +                    // Speed
@@ -81,7 +81,7 @@ public class Gl200ProtocolDecoder extends BaseProtocolDecoder {
             "(\\p{XDigit}{4}|\\p{XDigit}{8})?," + // LAC
             "(\\p{XDigit}{4})?," +              // Cell
             "(?:(\\d+\\.\\d)?," +               // Odometer
-            "(\\d{1,3})?,)?" +                  // Battery*/
+            "(\\d{1,3})?,)?" +                  // Battery
             ".*," +
             "(\\p{XDigit}{4})\\$?");
 
@@ -93,7 +93,7 @@ public class Gl200ProtocolDecoder extends BaseProtocolDecoder {
         String sentence = (String) msg;
 
         // Handle heartbeat
-        Matcher parser = heartbeatPattern.matcher(sentence);
+        Matcher parser = PATTERN_HEARTBEAT.matcher(sentence);
         if (parser.matches()) {
             if (channel != null) {
                 channel.write("+SACK:GTHBD," + parser.group(1) + "," + parser.group(2) + "$", remoteAddress);
@@ -102,7 +102,7 @@ public class Gl200ProtocolDecoder extends BaseProtocolDecoder {
         }
 
         // Parse message
-        parser = pattern.matcher(sentence);
+        parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -119,46 +119,55 @@ public class Gl200ProtocolDecoder extends BaseProtocolDecoder {
         }
         position.setDeviceId(getDeviceId());
 
-        // Fuel
+        // OBD
+        position.set(Event.KEY_RPM, parser.group(index++));
+        position.set(Event.KEY_OBD_SPEED, parser.group(index++));
+        position.set(Event.PREFIX_TEMP + 1, parser.group(index++));
         position.set("fuel-consumption", parser.group(index++));
+        position.set("dtcs-cleared-distance", parser.group(index++));
+        position.set("odb-connect", parser.group(index++));
+        position.set("dtcs-number", parser.group(index++));
+        position.set("dtcs-codes", parser.group(index++));
+        position.set("throttle-position", parser.group(index++));
         position.set(Event.KEY_FUEL, parser.group(index++));
+        position.set(Event.KEY_OBD_ODOMETER, parser.group(index++));
 
         // Validity
-        position.setValid(Integer.valueOf(parser.group(index++)) < 20);
+        position.setValid(Integer.parseInt(parser.group(index++)) < 20);
 
         // Speed
         String speed = parser.group(index++);
         if (speed != null) {
-            position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(speed)));
+            position.setSpeed(UnitsConverter.knotsFromKph(Double.parseDouble(speed)));
         }
 
         // Course
         String course = parser.group(index++);
         if (speed != null) {
-            position.setCourse(Double.valueOf(course));
+            position.setCourse(Double.parseDouble(course));
         }
 
         // Altitude
         String altitude = parser.group(index++);
-        if (speed != null) {
-            position.setAltitude(Double.valueOf(altitude));
+        if (altitude != null) {
+            position.setAltitude(Double.parseDouble(altitude));
         }
 
         // Coordinates
-        position.setLongitude(Double.valueOf(parser.group(index++)));
-        position.setLatitude(Double.valueOf(parser.group(index++)));
+        position.setLongitude(Double.parseDouble(parser.group(index++)));
+        position.setLatitude(Double.parseDouble(parser.group(index++)));
 
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.YEAR, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
 
         // Time
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Cell information
@@ -169,7 +178,7 @@ public class Gl200ProtocolDecoder extends BaseProtocolDecoder {
 
         // Other
         String odometer = parser.group(index++);
-        if (odometer != null && Double.valueOf(odometer) != 0) {
+        if (odometer != null && Double.parseDouble(odometer) != 0) {
             position.set(Event.KEY_ODOMETER, odometer);
         }
         position.set(Event.KEY_BATTERY, parser.group(index++));

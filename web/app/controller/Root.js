@@ -16,62 +16,74 @@
 
 Ext.define('Traccar.controller.Root', {
     extend: 'Ext.app.Controller',
-    
+
     requires: [
-        'Traccar.LoginManager',
-        'Traccar.view.login.Login',
-        'Traccar.view.main.Main',
-        'Traccar.view.main.MainMobile'
+        'Traccar.view.Login',
+        'Traccar.view.Main',
+        'Traccar.view.MainMobile'
     ],
 
-    init: function() {
+    init: function () {
         var indicator = document.createElement('div');
         indicator.className = 'state-indicator';
         document.body.appendChild(indicator);
         this.isPhone = parseInt(window.getComputedStyle(indicator).getPropertyValue('z-index'), 10) !== 0;
     },
-    
+
     onLaunch: function () {
-        Traccar.LoginManager.server({
+        Ext.Ajax.request({
             scope: this,
-            callback: 'onServer'
+            url: '/api/server/get',
+            callback: this.onServerReturn
         });
     },
 
-    onServer: function() {
-        Traccar.LoginManager.session({
-            scope: this,
-            callback: 'onSession'
-        });
-    },
-    
-    onSession: function(success) {
-        if (success) {
-            this.loadApp();
-        } else {
-            this.login = Ext.create('Traccar.view.login.Login', {
-                listeners: {
+    onServerReturn: function (options, success, response) {
+        var result;
+        if (Traccar.ErrorManager.check(success, response)) {
+            result = Ext.decode(response.responseText);
+            if (result.success) {
+                Traccar.app.setServer(result.data);
+                Ext.Ajax.request({
                     scope: this,
-                    login: 'onLogin'
-                }
-            });
-            this.login.show();
+                    url: '/api/session',
+                    callback: this.onSessionReturn
+                });
+            }
         }
     },
 
-    onLogin: function() {
+    onSessionReturn: function (options, success, response) {
+        var result;
+        if (Traccar.ErrorManager.check(success, response)) {
+            result = Ext.decode(response.responseText);
+            if (result.success) {
+                Traccar.app.setUser(result.data);
+                this.loadApp();
+            } else {
+                this.login = Ext.create('widget.login', {
+                    listeners: {
+                        scope: this,
+                        login: this.onLogin
+                    }
+                });
+                this.login.show();
+            }
+        }
+    },
+
+    onLogin: function () {
         this.login.close();
         this.loadApp();
     },
-    
-    loadApp: function() {
+
+    loadApp: function () {
         Ext.getStore('Devices').load();
         Ext.getBody().empty();
         if (this.isPhone) {
-            Ext.create('Traccar.view.main.MainMobile');
+            Ext.create('widget.mainMobile');
         } else {
-            Ext.create('Traccar.view.main.Main');
+            Ext.create('widget.main');
         }
     }
-
 });

@@ -25,23 +25,81 @@ public class Device implements Factory {
     }
 
     private long id;
-    public long getId() { return id; }
-    public void setId(long id) { this.id = id; }
-    
+
+    public long getId() {
+        return id;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
     private String name;
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
 
     private String uniqueId;
-    public String getUniqueId() { return uniqueId; }
-    public void setUniqueId(String uniqueId) { this.uniqueId = uniqueId; }
-    
+
+    public String getUniqueId() {
+        return uniqueId;
+    }
+
+    public void setUniqueId(String uniqueId) {
+        this.uniqueId = uniqueId;
+    }
+
     private String status;
-    
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     private Date lastUpdate;
-    
+
+    public Date getLastUpdate() {
+        if (lastUpdate != null) {
+            return new Date(lastUpdate.getTime());
+        } else {
+            return null;
+        }
+    }
+
+    public void setLastUpdate(Date lastUpdate) {
+        if (lastUpdate != null) {
+            this.lastUpdate = new Date(lastUpdate.getTime());
+        } else {
+            this.lastUpdate = null;
+        }
+    }
+
     private long positionId;
-    
+
+    public long getPositionId() {
+        return positionId;
+    }
+
+    public void setPositionId(long positionId) {
+        this.positionId = positionId;
+    }
+
     private long dataId;
+
+    public long getDataId() {
+        return dataId;
+    }
+
+    public void setDataId(long dataId) {
+        this.dataId = dataId;
+    }
 
 }

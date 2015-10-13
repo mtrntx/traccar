@@ -15,12 +15,12 @@
  */
 package org.traccar.helper;
 
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 
-public class Hashing {
+public final class Hashing {
 
     public static final int ITERATIONS = 1000;
     public static final int SALT_SIZE = 24;
@@ -28,13 +28,24 @@ public class Hashing {
 
     public static class HashingResult {
 
-        public final String hash;
-        public final String salt;
+        private final String hash;
+        private final String salt;
 
         public HashingResult(String hash, String salt) {
             this.hash = hash;
             this.salt = salt;
         }
+
+        public String getHash() {
+            return hash;
+        }
+
+        public String getSalt() {
+            return salt;
+        }
+    }
+
+    private Hashing() {
     }
 
     private static byte[] function(char[] password, byte[] salt) {
@@ -47,10 +58,11 @@ public class Hashing {
         }
     }
 
-    private static SecureRandom random = new SecureRandom();
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     public static HashingResult createHash(String password) {
-        byte[] salt = new byte[SALT_SIZE]; random.nextBytes(salt);
+        byte[] salt = new byte[SALT_SIZE];
+        RANDOM.nextBytes(salt);
         byte[] hash = function(password.toCharArray(), salt);
         return new HashingResult(
                 ChannelBufferTools.convertByteArray(hash),

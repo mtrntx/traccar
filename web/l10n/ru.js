@@ -1,4 +1,4 @@
-var strings = {
+var Strings = {
     sharedLoading: 'Загрузка...',
     sharedSave: 'Сохранить',
     sharedCancel: 'Отмена',
@@ -44,7 +44,7 @@ var strings = {
     settingsSpeedUnit: 'Скорость',
 
     reportTitle: 'Отчеты',
-    reportDevice: 'Устройтво',
+    reportDevice: 'Устройство',
     reportFrom: 'С',
     reportTo: 'По',
     reportShow: 'Показать',

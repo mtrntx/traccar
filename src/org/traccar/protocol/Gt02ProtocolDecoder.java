@@ -16,14 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
-
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Event;
@@ -47,8 +44,8 @@ public class Gt02ProtocolDecoder extends BaseProtocolDecoder {
         return imei.toString();
     }
 
-    private static final int MSG_HEARTBEAT = 0x1A;
-    private static final int MSG_DATA = 0x10;
+    public static final int MSG_HEARTBEAT = 0x1A;
+    public static final int MSG_DATA = 0x10;
 
     @Override
     protected Object decode(
@@ -69,13 +66,13 @@ public class Gt02ProtocolDecoder extends BaseProtocolDecoder {
         int type = buf.readUnsignedByte();
 
         if (type == MSG_HEARTBEAT) {
+
             if (channel != null) {
                 byte[] response = {0x54, 0x68, 0x1A, 0x0D, 0x0A};
                 channel.write(ChannelBuffers.wrappedBuffer(response));
             }
-        }
 
-        else if (type == MSG_DATA) {
+        } else if (type == MSG_DATA) {
 
             // Create new position
             Position position = new Position();

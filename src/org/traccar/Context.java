@@ -20,17 +20,21 @@ import org.traccar.database.ConnectionManager;
 import org.traccar.database.DataManager;
 import org.traccar.database.IdentityManager;
 import org.traccar.database.PermissionsManager;
+import org.traccar.geocode.BingMapsReverseGeocoder;
+import org.traccar.geocode.FactualReverseGeocoder;
 import org.traccar.geocode.GisgraphyReverseGeocoder;
 import org.traccar.geocode.GoogleReverseGeocoder;
+import org.traccar.geocode.MapQuestReverseGeocoder;
 import org.traccar.geocode.NominatimReverseGeocoder;
+import org.traccar.geocode.OpenCageReverseGeocoder;
 import org.traccar.geocode.ReverseGeocoder;
 import org.traccar.helper.Log;
 import org.traccar.web.WebServer;
 
 public class Context {
-    
+
     private static Config config;
-    
+
     public static Config getConfig() {
         return config;
     }
@@ -40,9 +44,9 @@ public class Context {
     public static boolean isLoggerEnabled() {
         return loggerEnabled;
     }
-    
+
     private static IdentityManager identityManager;
-    
+
     public static IdentityManager getIdentityManager() {
         return identityManager;
     }
@@ -82,9 +86,9 @@ public class Context {
     public static ServerManager getServerManager() {
         return serverManager;
     }
-    
+
     private static final AsyncHttpClient asyncHttpClient = new AsyncHttpClient();
-    
+
     public static AsyncHttpClient getAsyncHttpClient() {
         return asyncHttpClient;
     }
@@ -106,32 +110,45 @@ public class Context {
         }
         identityManager = dataManager;
 
-        connectionManager = new ConnectionManager(dataManager);
-
         if (config.getBoolean("geocoder.enable")) {
             String type = config.getString("geocoder.type", "google");
             String url = config.getString("geocoder.url");
+            String key = config.getString("geocoder.key");
+
+            int cacheSize = config.getInteger("geocoder.cacheSize");
             switch (type) {
-                case "google":
-                    reverseGeocoder = new GoogleReverseGeocoder();
-                    break;
                 case "nominatim":
-                    reverseGeocoder = new NominatimReverseGeocoder(url);
+                    reverseGeocoder = new NominatimReverseGeocoder(url, cacheSize);
                     break;
                 case "gisgraphy":
-                    reverseGeocoder = new GisgraphyReverseGeocoder(url);
+                    reverseGeocoder = new GisgraphyReverseGeocoder(url, cacheSize);
+                    break;
+                case "mapquest":
+                    reverseGeocoder = new MapQuestReverseGeocoder(url, key, cacheSize);
+                    break;
+                case "opencage":
+                    reverseGeocoder = new OpenCageReverseGeocoder(url, key, cacheSize);
+                    break;
+                case "bingmaps":
+                    reverseGeocoder = new BingMapsReverseGeocoder(url, key, cacheSize);
+                    break;
+                case "factual":
+                    reverseGeocoder = new FactualReverseGeocoder(url, key, cacheSize);
+                    break;
+                default:
+                    reverseGeocoder = new GoogleReverseGeocoder(cacheSize);
                     break;
             }
         }
 
         if (config.getBoolean("web.enable")) {
-            if (!config.getBoolean("web.old")) {
+            if (config.getString("web.type", "new").equals("new") || config.getString("web.type", "new").equals("api")) {
                 permissionsManager = new PermissionsManager(dataManager);
-                webServer = new WebServer(config);
-            } else {
-                webServer = new WebServer(config, dataManager.getDataSource());
             }
+            webServer = new WebServer(config, dataManager.getDataSource());
         }
+
+        connectionManager = new ConnectionManager(dataManager);
 
         serverManager = new ServerManager();
     }

@@ -16,12 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -32,10 +31,7 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    //$1,357804047969310,D001,AP29AW0963,01/01/13,13:24:47,1723.9582N,07834.0945E
-    //,00100,010,0,0,0,0,
-    //0,0008478660,1450,40,34,0,0,0,A
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             ".*\\$1," +
             "(\\d+)," +                         // IMEI
             "D001," +                           // Type
@@ -76,7 +72,7 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
         String sentence = (String) msg;
 
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -92,59 +88,59 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
         position.setDeviceId(getDeviceId());
-        
+
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
 
         // Time
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Latitude
-        Double latitude = Double.valueOf(parser.group(index++));
-        latitude += Double.valueOf(parser.group(index++) + parser.group(index++)) / 600000;
+        Double latitude = Double.parseDouble(parser.group(index++));
+        latitude += Double.parseDouble(parser.group(index++) + parser.group(index++)) / 600000;
         if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
         position.setLatitude(latitude);
 
         // Longitude
-        Double longitude = Double.valueOf(parser.group(index++));
-        longitude += Double.valueOf(parser.group(index++) + parser.group(index++)) / 600000;
+        Double longitude = Double.parseDouble(parser.group(index++));
+        longitude += Double.parseDouble(parser.group(index++) + parser.group(index++)) / 600000;
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)));
+        position.setSpeed(Double.parseDouble(parser.group(index++)));
 
         // Course
-        position.setCourse(Double.valueOf(parser.group(index++)));
+        position.setCourse(Double.parseDouble(parser.group(index++)));
 
         // Old format
         if (parser.group(index) != null) {
-            position.set(Event.KEY_ODOMETER, Integer.valueOf(parser.group(index++)));
-            position.set(Event.KEY_IGNITION, Integer.valueOf(parser.group(index++)));
-            position.set(Event.KEY_INPUT, Integer.valueOf(parser.group(index++)) + Integer.valueOf(parser.group(index++)) << 1);
-            position.set(Event.KEY_FUEL, Integer.valueOf(parser.group(index++)));
+            position.set(Event.KEY_ODOMETER, Integer.parseInt(parser.group(index++)));
+            position.set(Event.KEY_IGNITION, Integer.parseInt(parser.group(index++)));
+            position.set(Event.KEY_INPUT, Integer.parseInt(parser.group(index++)) + Integer.parseInt(parser.group(index++)) << 1);
+            position.set(Event.KEY_FUEL, Integer.parseInt(parser.group(index++)));
         } else {
             index += 5;
         }
 
         // New format
         if (parser.group(index) != null) {
-            position.set(Event.KEY_CHARGE, Integer.valueOf(parser.group(index++)) == 1);
-            position.set(Event.KEY_IGNITION, Integer.valueOf(parser.group(index++)));
-            position.set(Event.KEY_INPUT, Integer.valueOf(parser.group(index++)));
+            position.set(Event.KEY_CHARGE, Integer.parseInt(parser.group(index++)) == 1);
+            position.set(Event.KEY_IGNITION, Integer.parseInt(parser.group(index++)));
+            position.set(Event.KEY_INPUT, Integer.parseInt(parser.group(index++)));
             position.set(Event.KEY_RFID, parser.group(index++));
-            position.set(Event.KEY_ODOMETER, Integer.valueOf(parser.group(index++)));
-            position.set(Event.PREFIX_TEMP + 1, Integer.valueOf(parser.group(index++)));
-            position.set(Event.KEY_FUEL, Integer.valueOf(parser.group(index++)));
-            position.set("accel", Integer.valueOf(parser.group(index++)) == 1);
-            position.set(Event.KEY_OUTPUT, Integer.valueOf(parser.group(index++)) + Integer.valueOf(parser.group(index++)) << 1);
+            position.set(Event.KEY_ODOMETER, Integer.parseInt(parser.group(index++)));
+            position.set(Event.PREFIX_TEMP + 1, Integer.parseInt(parser.group(index++)));
+            position.set(Event.KEY_FUEL, Integer.parseInt(parser.group(index++)));
+            position.set("accel", Integer.parseInt(parser.group(index++)) == 1);
+            position.set(Event.KEY_OUTPUT, Integer.parseInt(parser.group(index++)) + Integer.parseInt(parser.group(index++)) << 1);
         } else {
             index += 10;
         }

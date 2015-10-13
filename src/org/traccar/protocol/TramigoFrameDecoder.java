@@ -20,7 +20,6 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.handler.codec.frame.FrameDecoder;
 import org.jboss.netty.handler.codec.frame.LengthFieldBasedFrameDecoder;
 
 public class TramigoFrameDecoder extends LengthFieldBasedFrameDecoder {
@@ -34,7 +33,7 @@ public class TramigoFrameDecoder extends LengthFieldBasedFrameDecoder {
             ChannelHandlerContext ctx,
             Channel channel,
             ChannelBuffer buf) throws Exception {
-        
+
         if (buf.readableBytes() < 20) {
             return null;
         }
@@ -42,9 +41,9 @@ public class TramigoFrameDecoder extends LengthFieldBasedFrameDecoder {
         // Swap byte order for legacy protocol
         if (buf.getUnsignedByte(buf.readerIndex()) == 0x80) {
             int length = buf.readableBytes();
-            byte bytes[] = new byte[length];
+            byte[] bytes = new byte[length];
             buf.getBytes(buf.readerIndex(), bytes);
-            
+
             ChannelBuffer result = (ChannelBuffer) super.decode(
                     ctx, channel, ChannelBuffers.wrappedBuffer(ByteOrder.LITTLE_ENDIAN, bytes));
             if (result != null) {

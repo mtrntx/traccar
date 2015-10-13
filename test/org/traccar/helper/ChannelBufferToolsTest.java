@@ -7,15 +7,11 @@ import org.junit.Test;
 
 public class ChannelBufferToolsTest {
     
-    private ChannelBufferFactory factory = new HeapChannelBufferFactory();
-    
-    @Test
-    public void testFind() {
-    }
+    private final ChannelBufferFactory factory = new HeapChannelBufferFactory();
 
     @Test
     public void testReadHexInteger() {
-        byte[] buf = {0x01,(byte)0x90,0x34};
+        byte[] buf = {0x01, (byte) 0x90, 0x34};
         int result = ChannelBufferTools.readHexInteger(
                 factory.getBuffer(buf, 0, buf.length), 5);
         assertEquals(1903, result);
@@ -23,23 +19,23 @@ public class ChannelBufferToolsTest {
     
     @Test
     public void testReadHexString() {
-        byte[] buf = {0x01,(byte)0x90,0x34};
+        byte[] buf = {0x01, (byte) 0x90, 0x34};
         String result = ChannelBufferTools.readHexString(
                 factory.getBuffer(buf, 0, buf.length), 5);
         assertEquals("01903", result);
         
-        result = Long.valueOf(result).toString();
+        result = String.valueOf(Long.parseLong(result));
         assertEquals("1903", result);
     }
 
     @Test
     public void convertHexStringTest() {
-        assertArrayEquals(new byte[] {0x12,0x34}, ChannelBufferTools.convertHexString("1234"));
+        assertArrayEquals(new byte[] {0x12, 0x34}, ChannelBufferTools.convertHexString("1234"));
     }
 
     @Test
     public void convertHexByteArray() {
-        assertEquals("1234", ChannelBufferTools.convertByteArray(new byte[] {0x12,0x34}));
+        assertEquals("1234", ChannelBufferTools.convertByteArray(new byte[] {0x12, 0x34}));
     }
 
 }

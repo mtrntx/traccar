@@ -16,14 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -34,8 +31,8 @@ public class MiniFinderProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
-            "\\!D," +
+    private static final Pattern PATTERN = Pattern.compile(
+            "!D," +
             "(\\d+)/(\\d+)/(\\d+)," +      // Date
             "(\\d+):(\\d+):(\\d+)," +      // Time
             "(-?\\d+\\.\\d+)," +           // Latitude
@@ -48,7 +45,7 @@ public class MiniFinderProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+)," +                    // Satellites in use
             "(\\d+)," +                    // Satellites in view
             "0");
-    
+
     @Override
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg)
@@ -56,16 +53,15 @@ public class MiniFinderProtocolDecoder extends BaseProtocolDecoder {
 
         String sentence = (String) msg;
 
-        // Identification
         if (sentence.startsWith("!1")) {
+
+            // Identification
             identify(sentence.substring(3, sentence.length()), channel);
-        }
 
-        // Location
-        else if (sentence.startsWith("!D") && hasDeviceId()) {
+        } else if (sentence.startsWith("!D") && hasDeviceId()) {
 
-            // Parse message
-            Matcher parser = pattern.matcher(sentence);
+            // Location
+            Matcher parser = PATTERN.matcher(sentence);
             if (!parser.matches()) {
                 return null;
             }
@@ -80,33 +76,34 @@ public class MiniFinderProtocolDecoder extends BaseProtocolDecoder {
             // Time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+            time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
             position.setTime(time.getTime());
 
             // Location
-            position.setLatitude(Double.valueOf(parser.group(index++)));
-            position.setLongitude(Double.valueOf(parser.group(index++)));
-            position.setSpeed(Double.valueOf(parser.group(index++)));
-            position.setCourse(Double.valueOf(parser.group(index++)));
-            
+            position.setLatitude(Double.parseDouble(parser.group(index++)));
+            position.setLongitude(Double.parseDouble(parser.group(index++)));
+            position.setSpeed(Double.parseDouble(parser.group(index++)));
+            position.setCourse(Double.parseDouble(parser.group(index++)));
+
             // Flags
             String flags = parser.group(index++);
             position.set(Event.KEY_FLAGS, flags);
             position.setValid((Integer.parseInt(flags, 16) & 0x01) != 0);
 
             // Altitude
-            position.setAltitude(Double.valueOf(parser.group(index++)));
+            position.setAltitude(Double.parseDouble(parser.group(index++)));
 
             // Battery
             position.set(Event.KEY_BATTERY, parser.group(index++));
 
             // Satellites
             position.set(Event.KEY_SATELLITES, parser.group(index++));
+
             return position;
         }
 

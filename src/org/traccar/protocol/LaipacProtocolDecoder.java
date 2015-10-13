@@ -16,16 +16,13 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.helper.Crc;
+import org.traccar.helper.Checksum;
 import org.traccar.model.Position;
 
 public class LaipacProtocolDecoder extends BaseProtocolDecoder {
@@ -34,7 +31,7 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "\\$AVRMC," +
             "([^,]+)," +                   // Identifier
             "(\\d{2})(\\d{2})(\\d{2})," +  // Time (HHMMSS)
@@ -49,7 +46,7 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
             "(.)," +                       // Type
             "[^\\*]+\\*" +
             "(\\p{XDigit}{2})");           // Checksum
-    
+
     @Override
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg)
@@ -62,9 +59,9 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
             channel.write(sentence + "\r\n");
             return null;
         }
-        
+
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -83,36 +80,36 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
 
         // Validity
         String status = parser.group(index++);
         position.setValid(status.compareToIgnoreCase("A") == 0);
 
         // Latitude
-        Double latitude = Double.valueOf(parser.group(index++));
-        latitude += Double.valueOf(parser.group(index++)) / 60;
+        Double latitude = Double.parseDouble(parser.group(index++));
+        latitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
         position.setLatitude(latitude);
 
         // Longitude
-        Double longitude = Double.valueOf(parser.group(index++));
-        longitude += Double.valueOf(parser.group(index++)) / 60;
+        Double longitude = Double.parseDouble(parser.group(index++));
+        longitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)));
+        position.setSpeed(Double.parseDouble(parser.group(index++)));
 
         // Course
-        position.setCourse(Double.valueOf(parser.group(index++)));
+        position.setCourse(Double.parseDouble(parser.group(index++)));
 
         // Date
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Response
@@ -122,7 +119,7 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
 
         if (type.equals("0") && Character.isLowerCase(status.charAt(0))) {
             response = "$EAVACK,0," + checksum;
-            response += Crc.nmeaChecksum(response);
+            response += Checksum.nmea(response);
         } else if (type.equals("S") || type.equals("T")) {
             response = "$AVCFG,00000000,t*21";
         } else if (type.equals("3")) {
@@ -130,7 +127,7 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
         } else if (type.equals("X") || type.equals("4")) {
             response = "$AVCFG,00000000,x*2D";
         }
-        
+
         if (response != null && channel != null) {
             channel.write(response + "\r\n");
         }

@@ -35,30 +35,28 @@ public class NoranProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final DateFormat dateFormat = new SimpleDateFormat("yy-MM-dd HH:mm:ss");
+    public static final int MSG_UPLOAD_POSITION = 0x0008;
+    public static final int MSG_UPLOAD_POSITION_NEW = 0x0032;
+    public static final int MSG_CONTROL_RESPONSE = 0x8009;
+    public static final int MSG_ALARM = 0x0003;
+    public static final int MSG_SHAKE_HAND = 0x0000;
+    public static final int MSG_SHAKE_HAND_RESPONSE = 0x8000;
+    public static final int MSG_IMAGE_SIZE = 0x0200;
+    public static final int MSG_IMAGE_PACKET = 0x0201;
 
-    private static final int MSG_UPLOAD_POSITION = 0x0008;
-    private static final int MSG_UPLOAD_POSITION_NEW = 0x0032;
-    private static final int MSG_CONTROL_RESPONSE = 0x8009;
-    private static final int MSG_ALARM = 0x0003;
-    private static final int MSG_SHAKE_HAND = 0x0000;
-    private static final int MSG_SHAKE_HAND_RESPONSE = 0x8000;
-    private static final int MSG_IMAGE_SIZE = 0x0200;
-    private static final int MSG_IMAGE_PACKET = 0x0201;
-    
 
     @Override
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
-        
+
         ChannelBuffer buf = (ChannelBuffer) msg;
-        
+
         buf.readUnsignedShort(); // length
         int type = buf.readUnsignedShort();
-        
+
         if (type == MSG_SHAKE_HAND && channel != null) {
-            
+
             ChannelBuffer response = ChannelBuffers.dynamicBuffer(ByteOrder.LITTLE_ENDIAN, 13);
             response.writeBytes(ChannelBuffers.copiedBuffer(ByteOrder.LITTLE_ENDIAN, "\r\n*KW", Charset.defaultCharset()));
             response.writeByte(0);
@@ -66,30 +64,26 @@ public class NoranProtocolDecoder extends BaseProtocolDecoder {
             response.writeShort(MSG_SHAKE_HAND_RESPONSE);
             response.writeByte(1); // status
             response.writeBytes(ChannelBuffers.copiedBuffer(ByteOrder.LITTLE_ENDIAN, "\r\n", Charset.defaultCharset()));
-            
+
             channel.write(response, remoteAddress);
-        }
-        
-        else if (type == MSG_UPLOAD_POSITION ||
+
+        } else if (type == MSG_UPLOAD_POSITION ||
                  type == MSG_UPLOAD_POSITION_NEW ||
                  type == MSG_CONTROL_RESPONSE ||
                  type == MSG_ALARM) {
 
             boolean newFormat = false;
-            /*if (((type == MSG_UPLOAD_POSITION || type == MSG_ALARM) && buf.readableBytes() == 30) ||
-                ((type == MSG_CONTROL_RESPONSE) && buf.readableBytes() == 39)) {
-                newFormat = false;
-            }*/
-            if (((type == MSG_UPLOAD_POSITION || type == MSG_ALARM) && buf.readableBytes() == 48) ||
-                ((type == MSG_CONTROL_RESPONSE) && buf.readableBytes() == 57) ||
-                ((type == MSG_UPLOAD_POSITION_NEW))) {
+            if (type == MSG_UPLOAD_POSITION && buf.readableBytes() == 48 ||
+                type == MSG_ALARM && buf.readableBytes() == 48 ||
+                type == MSG_CONTROL_RESPONSE && buf.readableBytes() == 57 ||
+                type == MSG_UPLOAD_POSITION_NEW) {
                 newFormat = true;
             }
 
             // Create new position
             Position position = new Position();
             position.setProtocol(getProtocolName());
-            
+
             if (type == MSG_CONTROL_RESPONSE) {
                 buf.readUnsignedInt(); // GIS ip
                 buf.readUnsignedInt(); // GIS port
@@ -136,6 +130,7 @@ public class NoranProtocolDecoder extends BaseProtocolDecoder {
 
             // Time
             if (newFormat) {
+                DateFormat dateFormat = new SimpleDateFormat("yy-MM-dd HH:mm:ss");
                 position.setTime(dateFormat.parse(buf.readBytes(17).toString(Charset.defaultCharset())));
                 buf.readByte();
             }

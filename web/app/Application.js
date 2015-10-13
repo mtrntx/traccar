@@ -19,25 +19,26 @@ Ext.define('Traccar.Application', {
     name: 'Traccar',
 
     requires: [
-        'Traccar.Resources',
-        'Traccar.ErrorManager'
+        'Traccar.Style',
+        'Traccar.ErrorManager',
+        'Traccar.AttributeFormatter'
     ],
-    
+
     models: [
         'Server',
         'User',
         'Device',
         'Position',
-        'Parameter',
+        'Attribute',
         'Command'
     ],
-    
+
     stores: [
         'Devices',
         'Positions',
-        'LiveData',
+        'LatestPositions',
         'Users',
-        'Parameters',
+        'Attributes',
         'MapTypes',
         'DistanceUnits',
         'SpeedUnits',
@@ -49,21 +50,30 @@ Ext.define('Traccar.Application', {
     controllers: [
         'Root'
     ],
-    
-    setUser: function(user) {
-        this.user = user;
+
+    setUser: function (data) {
+        var reader = Ext.create('Ext.data.reader.Json', {
+            model: 'Traccar.model.User'
+        });
+        this.user = reader.readRecords(data).getRecords()[0];
     },
-    
-    getUser: function() {
+
+    getUser: function () {
         return this.user;
     },
-    
-    setServer: function(server) {
-        this.server = server;
+
+    setServer: function (data) {
+        var reader = Ext.create('Ext.data.reader.Json', {
+            model: 'Traccar.model.Server'
+        });
+        this.server = reader.readRecords(data).getRecords()[0];
     },
-    
-    getServer: function() {
+
+    getServer: function () {
         return this.server;
+    },
+
+    getPreference: function (key, defaultValue) {
+        return this.getUser().get(key) || this.getServer().get(key) || defaultValue;
     }
-    
 });

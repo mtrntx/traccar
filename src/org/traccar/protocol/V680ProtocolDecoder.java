@@ -16,14 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -34,7 +31,7 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "(?:#(\\d+)#" +                // IMEI
             "([^#]*)#)?" +                 // User
             "(\\d+)#" +                    // Fix
@@ -60,7 +57,7 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
 
         String sentence = (String) msg;
         sentence = sentence.trim();
-       
+
         // Detect device ID
         if (sentence.length() == 16) {
             String imei = sentence.substring(1, sentence.length());
@@ -68,7 +65,7 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
         } else {
 
             // Parse message
-            Matcher parser = pattern.matcher(sentence);
+            Matcher parser = PATTERN.matcher(sentence);
             if (!parser.matches()) {
                 return null;
             }
@@ -92,7 +89,7 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
             position.set("user", parser.group(index++));
 
             // Validity
-            position.setValid(Integer.valueOf(parser.group(index++)) > 0);
+            position.setValid(Integer.parseInt(parser.group(index++)) > 0);
 
             // Password
             position.set("password", parser.group(index++));
@@ -108,45 +105,45 @@ public class V680ProtocolDecoder extends BaseProtocolDecoder {
 
             // Longitude
             String lon = parser.group(index++);
-            Double longitude = (lon != null) ? Double.valueOf(lon) : 0.0;
-            longitude += Double.valueOf(parser.group(index++)) / 60;
+            Double longitude = (lon != null) ? Double.parseDouble(lon) : 0.0;
+            longitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
             position.setLongitude(longitude);
 
             // Latitude
             String lat = parser.group(index++);
-            Double latitude = (lat != null) ? Double.valueOf(lat) : 0.0;
-            latitude += Double.valueOf(parser.group(index++)) / 60;
+            Double latitude = (lat != null) ? Double.parseDouble(lat) : 0.0;
+            latitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
             position.setLatitude(latitude);
 
             // Speed and Course
-            position.setSpeed(Double.valueOf(parser.group(index++)));
+            position.setSpeed(Double.parseDouble(parser.group(index++)));
             String course = parser.group(index++);
             if (course != null) {
-                position.setCourse(Double.valueOf(course));
+                position.setCourse(Double.parseDouble(course));
             }
 
             // Date
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
-            int day = Integer.valueOf(parser.group(index++));
-            int month = Integer.valueOf(parser.group(index++));
+            int day = Integer.parseInt(parser.group(index++));
+            int month = Integer.parseInt(parser.group(index++));
             if (day == 0 && month == 0) {
                 return null; // invalid date
             }
             time.set(Calendar.DAY_OF_MONTH, day);
             time.set(Calendar.MONTH, month - 1);
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
 
             // Time
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
             position.setTime(time.getTime());
             return position;
         }
-        
+
         return null;
     }
 

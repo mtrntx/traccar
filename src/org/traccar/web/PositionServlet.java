@@ -39,11 +39,11 @@ public class PositionServlet extends BaseServlet {
             default:
                 return false;
         }
-        return true;        
+        return true;
     }
-    
+
     private void get(HttpServletRequest req, HttpServletResponse resp) throws Exception {
-        long deviceId = Long.valueOf(req.getParameter("deviceId"));
+        long deviceId = Long.parseLong(req.getParameter("deviceId"));
         Context.getPermissionsManager().checkDevice(getUserId(req), deviceId);
         sendResponse(resp.getWriter(), JsonConverter.arrayToJson(
                     Context.getDataManager().getPositions(
@@ -56,7 +56,7 @@ public class PositionServlet extends BaseServlet {
         long userId = getUserId(req);
         Map<String, Object> positions = new HashMap<>();
 
-        for(String deviceIdString : req.getParameterValues("devicesId")) {
+        for (String deviceIdString : req.getParameterValues("devicesId")) {
             Long deviceId = Long.parseLong(deviceIdString);
 
             Context.getPermissionsManager().checkDevice(userId, deviceId);

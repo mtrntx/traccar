@@ -15,6 +15,8 @@
  */
 package org.traccar.web;
 
+import org.traccar.helper.Log;
+
 import java.io.IOException;
 import java.io.Writer;
 import java.security.AccessControlException;
@@ -27,9 +29,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 public abstract class BaseServlet extends HttpServlet {
-    
+
     public static final String USER_KEY = "user";
-    
+
     @Override
     protected final void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         String command = req.getPathInfo();
@@ -39,6 +41,9 @@ public abstract class BaseServlet extends HttpServlet {
         try {
             resp.setContentType("application/json");
             resp.setCharacterEncoding("UTF-8");
+            resp.setHeader("Access-Control-Allow-Origin", "*");
+            resp.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+            resp.setHeader("Access-Control-Allow-Methods", "GET, POST");
             if (!handle(command, req, resp)) {
                 resp.sendError(HttpServletResponse.SC_BAD_REQUEST);
             }
@@ -46,9 +51,9 @@ public abstract class BaseServlet extends HttpServlet {
             sendResponse(resp.getWriter(), error);
         }
     }
-    
+
     protected abstract boolean handle(String command, HttpServletRequest req, HttpServletResponse resp) throws Exception;
-    
+
     public long getUserId(HttpServletRequest req) {
         Long userId = (Long) req.getSession().getAttribute(USER_KEY);
         if (userId == null) {
@@ -56,35 +61,25 @@ public abstract class BaseServlet extends HttpServlet {
         }
         return userId;
     }
-    
-    public void securityCheck(boolean check) throws SecurityException {
-        if (!check) {
-            throw new SecurityException("Access denied");
-        }
-    }
-    
+
     public void sendResponse(Writer writer, boolean success) throws IOException {
         JsonObjectBuilder result = Json.createObjectBuilder();
         result.add("success", success);
         writer.write(result.build().toString());
     }
-    
+
     public void sendResponse(Writer writer, JsonStructure json) throws IOException {
         JsonObjectBuilder result = Json.createObjectBuilder();
         result.add("success", true);
         result.add("data", json);
         writer.write(result.build().toString());
     }
-    
+
     public void sendResponse(Writer writer, Exception error) throws IOException {
         JsonObjectBuilder result = Json.createObjectBuilder();
         result.add("success", false);
-        if (error.getMessage() != null) {
-            result.add("error", error.getMessage());
-        } else {
-            result.add("error", error.getClass().getSimpleName());
-        }
+        result.add("error", Log.exceptionStack(error));
         writer.write(result.build().toString());
     }
-    
+
 }

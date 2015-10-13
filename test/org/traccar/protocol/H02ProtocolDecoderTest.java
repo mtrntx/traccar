@@ -1,12 +1,11 @@
 package org.traccar.protocol;
 
-import org.traccar.helper.TestIdentityManager;
 import java.nio.charset.Charset;
 import org.jboss.netty.buffer.ChannelBuffers;
-import static org.traccar.helper.DecoderVerifier.verify;
 import static org.junit.Assert.assertNull;
 import org.junit.Test;
 import org.traccar.helper.ChannelBufferTools;
+import static org.traccar.helper.DecoderVerifier.verify;
 
 public class H02ProtocolDecoderTest extends ProtocolDecoderTest {
 
@@ -14,6 +13,9 @@ public class H02ProtocolDecoderTest extends ProtocolDecoderTest {
     public void testDecode() throws Exception {
 
         H02ProtocolDecoder decoder = new H02ProtocolDecoder(new H02Protocol());
+        
+        verify(decoder.decode(null, null, ChannelBuffers.copiedBuffer(
+                "*HQ,355488020119695,V1,050418,,2827.61232,N,07703.84822,E,0.00,0,031015,FFFEFBFF#", Charset.defaultCharset())));
 
         verify(decoder.decode(null, null, ChannelBuffers.copiedBuffer(
                 "*HQ,1451316409,V1,030149,A,-23-29.0095,S,-46-51.5852,W,2.4,065,070315,FFFFFFFF#", Charset.defaultCharset())));
@@ -80,6 +82,9 @@ public class H02ProtocolDecoderTest extends ProtocolDecoderTest {
         
         assertNull(decoder.decode(null, null, ChannelBuffers.copiedBuffer(
                 "*HQ,8401016597,BASE,152609,0,0,0,0,211014,FFFFFFFF#", Charset.defaultCharset())));
+
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "24410600082621532131081504419390060740418306000000fffffbfdff0015060000002c02dc0c000000001f"))));
 
         verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
                 "2427051711092133391406135002584900014337822e000000ffffffffff0000"))));

@@ -44,7 +44,7 @@ public class AutoFon45ProtocolDecoder extends BaseProtocolDecoder {
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
-        
+
         ChannelBuffer buf = (ChannelBuffer) msg;
 
         int type = buf.getUnsignedByte(0);
@@ -129,4 +129,5 @@ public class AutoFon45ProtocolDecoder extends BaseProtocolDecoder {
         }
         return GPRS_CRC;
     }
+
 }

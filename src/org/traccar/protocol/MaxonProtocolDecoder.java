@@ -16,14 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Position;
 
@@ -42,7 +39,7 @@ public class MaxonProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    static private Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "\\$GPRMC," +
             "(\\d{2})(\\d{2})(\\d{2})\\.(\\d{2})," + // Time (HHMMSS.SSS)
             "([AV])," +                    // Validity
@@ -55,11 +52,10 @@ public class MaxonProtocolDecoder extends BaseProtocolDecoder {
             "(\\d{2})(\\d{2})(\\d{2})" +   // Date (DDMMYY)
             ".+");                         // Other (Checksumm)
 
-    static private Pattern gpfidPattern = Pattern.compile("\\$GPFID,(\\d+)$");
+    private static final Pattern PATTERN_GPFID = Pattern.compile("\\$GPFID,(\\d+)$");
 
-    protected Object decode(
-            Channel channel, SocketAddress remoteAddress, Object msg)
-            throws Exception {
+    @Override
+    protected Object decode(Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
 
         String sentence = (String) msg;
 
@@ -68,7 +64,7 @@ public class MaxonProtocolDecoder extends BaseProtocolDecoder {
         if (sentence.contains("$GPRMC")) {
 
             // Parse message
-            Matcher parser = pattern.matcher(sentence);
+            Matcher parser = PATTERN.matcher(sentence);
             if (!parser.matches()) {
                 return null;
             }
@@ -81,46 +77,46 @@ public class MaxonProtocolDecoder extends BaseProtocolDecoder {
             // Time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
             index += 1; // Skip milliseconds
 
             // Validity
             position.setValid(parser.group(index++).compareTo("A") == 0);
 
             // Latitude
-            Double latitude = Double.valueOf(parser.group(index++));
-            latitude += Double.valueOf(parser.group(index++)) / 60;
+            Double latitude = Double.parseDouble(parser.group(index++));
+            latitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
             position.setLatitude(latitude);
 
             // Longitude
-            Double longitude = Double.valueOf(parser.group(index++));
-            longitude += Double.valueOf(parser.group(index++)) / 60;
+            Double longitude = Double.parseDouble(parser.group(index++));
+            longitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
             position.setLongitude(longitude);
 
             // Speed
             String speed = parser.group(index++);
             if (speed != null) {
-                position.setSpeed(Double.valueOf(speed));
+                position.setSpeed(Double.parseDouble(speed));
             }
 
             // Course
             String course = parser.group(index++);
             if (course != null) {
-                position.setCourse(Double.valueOf(course));
+                position.setCourse(Double.parseDouble(course));
             }
 
             // Date
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+            time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
             position.setTime(time.getTime());
 
         } else if (sentence.contains("$GPFID") && position != null) {
-            Matcher parser = gpfidPattern.matcher(sentence);
+            Matcher parser = PATTERN_GPFID.matcher(sentence);
 
             if (parser.matches()) {
                 if (!identify(parser.group(1), channel)) {

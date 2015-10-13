@@ -16,11 +16,15 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
+import java.util.ArrayList;
 import java.util.Date;
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.helper.Crc;
+import org.traccar.Context;
+import org.traccar.helper.ChannelBufferTools;
+import org.traccar.helper.Checksum;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -36,7 +40,7 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
     private static final long IMEI_BASE_TC65I_V11 = 0x14143B4000000L;
 
     private static boolean validateImei(long imei) {
-        return Crc.luhnChecksum(imei / 10) == imei % 10;
+        return Checksum.luhn(imei / 10) == imei % 10;
     }
 
     private static long imeiFromUnitId(long unitId) {
@@ -52,13 +56,13 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
             if (validateImei(imei)) {
                 return imei;
             }
-            
+
             // Try TC65 v2.8
             imei = IMEI_BASE_TC65_V28 + ((unitId + 0xA8180) & 0xFFFFFF);
             if (validateImei(imei)) {
                 return imei;
             }
-            
+
             // Try TC65 v2.0
             imei = IMEI_BASE_TC65_V20 + unitId;
             if (validateImei(imei)) {
@@ -66,7 +70,7 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
             }
 
         }
-        
+
         return unitId;
     }
 
@@ -144,7 +148,7 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
         if ((selector & 0x0040) != 0) {
             position.set(Event.KEY_INPUT, buf.readUnsignedByte());
         }
-        
+
         // ADC
         if ((selector & 0x0020) != 0) {
             position.set(Event.PREFIX_ADC + 1, buf.readUnsignedShort());
@@ -158,13 +162,13 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
             position.set(Event.KEY_POWER, buf.readUnsignedShort() / 1000.0);
             position.set(Event.KEY_BATTERY, buf.readUnsignedShort());
         }
-        
+
         // Pulse rate 1
         if ((selector & 0x10000) != 0) {
             buf.readUnsignedShort();
             buf.readUnsignedInt();
         }
-        
+
         // Pulse rate 2
         if ((selector & 0x20000) != 0) {
             buf.readUnsignedShort();
@@ -185,17 +189,17 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
         if ((selector & 0x0040) != 0) {
             position.set(Event.KEY_OUTPUT, buf.readUnsignedByte());
         }
-        
+
         // Button
         if ((selector & 0x0200) != 0) {
             buf.skipBytes(6);
         }
-        
+
         // Keypad
         if ((selector & 0x0400) != 0) {
             buf.readUnsignedByte();
         }
-        
+
         // Altitude
         if ((selector & 0x0800) != 0) {
             position.setAltitude(buf.readShort());
@@ -244,6 +248,86 @@ public class AplicomProtocolDecoder extends BaseProtocolDecoder {
                 case 130:
                     buf.readUnsignedInt(); // incorrect
                     break;
+                default:
+                    break;
+            }
+        }
+
+        if (Context.getConfig().getBoolean(getProtocolName() + ".can") &&
+                buf.readable() && (selector & 0x1000) != 0 && event == EVENT_DATA) {
+
+            buf.readUnsignedMedium(); // packet identifier
+            buf.readUnsignedByte(); // version
+            int count = buf.readUnsignedByte();
+            buf.readUnsignedByte(); // batch count
+            buf.readUnsignedShort(); // selector bit
+            buf.readUnsignedInt(); // timestamp
+
+            buf.skipBytes(8);
+
+            ArrayList<ChannelBuffer> values = new ArrayList<>(count);
+
+            for (int i = 0; i < count; i++) {
+                values.add(buf.readBytes(8));
+            }
+
+            for (int i = 0; i < count; i++) {
+                ChannelBuffer value = values.get(i);
+                switch (buf.readInt()) {
+                    case 0x20D:
+                        position.set(Event.KEY_RPM, ChannelBuffers.swapShort(value.readShort()));
+                        position.set("diesel-temperature", ChannelBuffers.swapShort(value.readShort()) * 0.1);
+                        position.set("battery-voltage", ChannelBuffers.swapShort(value.readShort()) * 0.01);
+                        position.set("supply-air-temp-dep1", ChannelBuffers.swapShort(value.readShort()) * 0.1);
+                        break;
+                    case 0x30D:
+                        position.set("active-alarm", ChannelBufferTools.readHexString(value, 16));
+                        break;
+                    case 0x40C:
+                        position.set("air-temp-dep1", ChannelBuffers.swapShort(value.readShort()) * 0.1);
+                        position.set("air-temp-dep2", ChannelBuffers.swapShort(value.readShort()) * 0.1);
+                        break;
+                    case 0x40D:
+                        position.set("cold-unit-state", ChannelBufferTools.readHexString(value, 16));
+                        break;
+                    case 0x50C:
+                        position.set("defrost-temp-dep1", ChannelBuffers.swapShort(value.readShort()) * 0.1);
+                        position.set("defrost-temp-dep2", ChannelBuffers.swapShort(value.readShort()) * 0.1);
+                        break;
+                    case 0x50D:
+                        position.set("condenser-pressure", ChannelBuffers.swapShort(value.readShort()) * 0.1);
+                        position.set("suction-pressure", ChannelBuffers.swapShort(value.readShort()) * 0.1);
+                        break;
+                    case 0x58C:
+                        value.readByte();
+                        value.readShort(); // index
+                        switch (value.readByte()) {
+                            case 0x01:
+                                position.set("setpoint-zone1", ChannelBuffers.swapInt(value.readInt()) * 0.1);
+                                break;
+                            case 0x02:
+                                position.set("setpoint-zone2", ChannelBuffers.swapInt(value.readInt()) * 0.1);
+                                break;
+                            case 0x05:
+                                position.set("unit-type", ChannelBuffers.swapInt(value.readInt()));
+                                break;
+                            case 0x13:
+                                position.set("diesel-hours", ChannelBuffers.swapInt(value.readInt()) / 60 / 60);
+                                break;
+                            case 0x14:
+                                position.set("electric-hours", ChannelBuffers.swapInt(value.readInt()) / 60 / 60);
+                                break;
+                            case 0x17:
+                                position.set("service-indicator", ChannelBuffers.swapInt(value.readInt()));
+                                break;
+                            case 0x18:
+                                position.set("software-version", ChannelBuffers.swapInt(value.readInt()) * 0.01);
+                                break;
+                            default:
+                                break;
+                        }
+                        break;
+                }
             }
         }
 

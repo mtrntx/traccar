@@ -17,26 +17,23 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Position;
 
-public class Ev603ProtocolDecoder extends BaseProtocolDecoder{
+public class Ev603ProtocolDecoder extends BaseProtocolDecoder {
 
     public Ev603ProtocolDecoder(Ev603Protocol protocol) {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "!.," +                           // Type
-            "(\\d{2})\\/(\\d{2})\\/(\\d{2})," + // Date dd/mm/YY
+            "(\\d{2})/(\\d{2})/(\\d{2})," +   // Date dd/mm/YY
             "(\\d{2}):(\\d{2}):(\\d{2})," +   // Time hh:mm:ss
             "(-?\\d+\\.\\d+)," +              // Latitude
             "(-?\\d+\\.\\d+)," +              // Longitude
@@ -59,7 +56,7 @@ public class Ev603ProtocolDecoder extends BaseProtocolDecoder{
         } else {
 
             // Parse message
-            Matcher parser = pattern.matcher(sentence);
+            Matcher parser = PATTERN.matcher(sentence);
             if (!hasDeviceId() || !parser.matches()) {
                 return null;
             }
@@ -73,28 +70,28 @@ public class Ev603ProtocolDecoder extends BaseProtocolDecoder{
             // Date
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+            time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
 
             // Time
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
             position.setTime(time.getTime());
 
             // Validity
             position.setValid(true);
 
             // Coordinates
-            position.setLatitude(Double.valueOf(parser.group(index++)));
-            position.setLongitude(Double.valueOf(parser.group(index++)));
+            position.setLatitude(Double.parseDouble(parser.group(index++)));
+            position.setLongitude(Double.parseDouble(parser.group(index++)));
 
             // Speed
-            position.setSpeed(Double.valueOf(parser.group(index++)));
+            position.setSpeed(Double.parseDouble(parser.group(index++)));
 
             // Course
-            position.setCourse(Double.valueOf(parser.group(index++)));
+            position.setCourse(Double.parseDouble(parser.group(index++)));
             if (position.getCourse() > 360) {
                 position.setCourse(0);
             }

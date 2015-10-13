@@ -27,7 +27,7 @@ public class ServerServlet extends BaseServlet {
 
         switch (command) {
             case "/get":
-                get(req, resp);
+                get(resp);
                 break;
             case "/update":
                 update(req, resp);
@@ -35,14 +35,14 @@ public class ServerServlet extends BaseServlet {
             default:
                 return false;
         }
-        return true;        
+        return true;
     }
-    
-    private void get(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+
+    private void get(HttpServletResponse resp) throws Exception {
         sendResponse(resp.getWriter(), JsonConverter.objectToJson(
                     Context.getDataManager().getServer()));
     }
-    
+
     private void update(HttpServletRequest req, HttpServletResponse resp) throws Exception {
         Server server = JsonConverter.objectFromJson(req.getReader(), new Server());
         Context.getPermissionsManager().checkAdmin(getUserId(req));

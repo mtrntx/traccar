@@ -22,22 +22,22 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
 
 public class AutoFonFrameDecoder extends FrameDecoder {
 
-    private static final int MSG_LOGIN = 0x10;
-    private static final int MSG_LOCATION = 0x11;
-    private static final int MSG_HISTORY = 0x12;
+    public static final int MSG_LOGIN = 0x10;
+    public static final int MSG_LOCATION = 0x11;
+    public static final int MSG_HISTORY = 0x12;
 
     @Override
     protected Object decode(
             ChannelHandlerContext ctx,
             Channel channel,
             ChannelBuffer buf) throws Exception {
-        
+
         // Check minimum length
         if (buf.readableBytes() < 12) {
             return null;
         }
 
-        int length = 0;
+        int length;
         switch (buf.getUnsignedByte(buf.readerIndex())) {
             case MSG_LOGIN:
                 length = 12;
@@ -48,8 +48,11 @@ public class AutoFonFrameDecoder extends FrameDecoder {
             case MSG_HISTORY:
                 length = 257;
                 break;
+            default:
+                length = 0;
+                break;
         }
-        
+
         // Check length and return buffer
         if (length != 0 && buf.readableBytes() >= length) {
             return buf.readBytes(length);

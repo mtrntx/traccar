@@ -16,14 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -34,7 +31,7 @@ public class MtxProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "#MTX," +
             "(\\d+)," +                         // IMEI
             "(\\d{4})(\\d{2})(\\d{2})," +       // Date
@@ -65,7 +62,7 @@ public class MtxProtocolDecoder extends BaseProtocolDecoder {
         }
 
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -81,27 +78,27 @@ public class MtxProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
         position.setDeviceId(getDeviceId());
-        
+
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.YEAR, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Location
         position.setValid(true);
-        position.setLatitude(Double.valueOf(parser.group(index++)));
-        position.setLongitude(Double.valueOf(parser.group(index++)));
-        position.setSpeed(Double.valueOf(parser.group(index++)));
-        position.setCourse(Double.valueOf(parser.group(index++)));
+        position.setLatitude(Double.parseDouble(parser.group(index++)));
+        position.setLongitude(Double.parseDouble(parser.group(index++)));
+        position.setSpeed(Double.parseDouble(parser.group(index++)));
+        position.setCourse(Double.parseDouble(parser.group(index++)));
 
         // Other
-        position.set(Event.KEY_ODOMETER, Double.valueOf(parser.group(index++)));
+        position.set(Event.KEY_ODOMETER, Double.parseDouble(parser.group(index++)));
         position.set(Event.KEY_INPUT, parser.group(index++));
         position.set(Event.KEY_OUTPUT, parser.group(index++));
         position.set(Event.PREFIX_ADC + 1, parser.group(index++));

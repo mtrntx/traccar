@@ -16,7 +16,7 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,9 +32,9 @@ public class SuntechProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "S.\\d{3}(?:\\w{3})?;" +       // Header
-            "(?:[^;]+;)?" +
+            "(?:([^;]+);)?" +              // Type
             "(\\d{6,});" +                 // Device ID
             "(?:\\d+;)?" +
             "(\\d+);" +                    // Version
@@ -57,7 +57,7 @@ public class SuntechProtocolDecoder extends BaseProtocolDecoder {
         String sentence = (String) msg;
 
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -67,40 +67,45 @@ public class SuntechProtocolDecoder extends BaseProtocolDecoder {
         position.setProtocol(getProtocolName());
         int index = 1;
 
+        String type = parser.group(index++);
+        if (type != null && (type.equals("Alert") || type.equals("Emergency"))) {
+            position.set(Event.KEY_ALARM, true);
+        }
+
         // Identifier
         if (!identify(parser.group(index++), channel)) {
             return null;
         }
         position.setDeviceId(getDeviceId());
-        
+
         // Version
         position.set(Event.KEY_VERSION, parser.group(index++));
 
         // Date and Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.YEAR, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
-        
+
         // Cell
         position.set(Event.KEY_CELL, parser.group(index++));
 
         // Coordinates
-        position.setLatitude(Double.valueOf(parser.group(index++)));
-        position.setLongitude(Double.valueOf(parser.group(index++)));
+        position.setLatitude(Double.parseDouble(parser.group(index++)));
+        position.setLongitude(Double.parseDouble(parser.group(index++)));
         position.setValid(true); // wrong?
 
         // Speed
-        position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(parser.group(index++))));
+        position.setSpeed(UnitsConverter.knotsFromKph(Double.parseDouble(parser.group(index++))));
 
         // Course
-        position.setCourse(Double.valueOf(parser.group(index++)));
-        
+        position.setCourse(Double.parseDouble(parser.group(index++)));
+
         // Battery
         position.set(Event.KEY_BATTERY, parser.group(index++));
 

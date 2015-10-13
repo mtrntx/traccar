@@ -1,11 +1,9 @@
 package org.traccar.protocol;
 
 import org.jboss.netty.buffer.ChannelBuffers;
+import static org.junit.Assert.assertNull;
 import org.junit.Test;
 import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.TestIdentityManager;
-
-import static org.junit.Assert.assertNull;
 import static org.traccar.helper.DecoderVerifier.verify;
 
 public class UlbotechProtocolDecoderTest extends ProtocolDecoderTest {
@@ -14,6 +12,12 @@ public class UlbotechProtocolDecoderTest extends ProtocolDecoderTest {
     public void testDecode() throws Exception {
 
         UlbotechProtocolDecoder decoder = new UlbotechProtocolDecoder(new UlbotechProtocol());
+
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "f8010103596580419465449da89d16010efe5580fe0923d82100140129005903040242000004040001a7f10506037818be220e070e31057b410c1324310d144131fa3208040020b1418297f8"))));
+        
+        verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
+                "f8010103596580419465449da8564e010efe55a1800923d04b0000000000710304000000000404000178d2050603571876220ec3caf8"))));
         
         verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
                 "f8010103545500500179009ccb4b62010e00144db906310d3f0000000000cb0304000000000404000a8123050603211860221006080000000100000000ef97f8"))));
@@ -26,9 +30,6 @@ public class UlbotechProtocolDecoderTest extends ProtocolDecoderTest {
         
         verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
                 "F8010108621060211481299C4249FA010E015EE27506BDE80900020000008F030402420000040400523CAF05060392173F220706080000000000000000071131058E410C0E40310D48312F8E41310884080402CA60E43872F8"))));
-
-        //verify(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
-        //        "F801010863070018987298729619022701CC0000285534BA4F28553AB14C2855BC9C572855BC9D5B28553AB25C2855445861285544586303040000000004040000076F0508033A18CF220D3DE6A638F8"))));
 
         assertNull(decoder.decode(null, null, ChannelBuffers.wrappedBuffer(ChannelBufferTools.convertHexString(
                 "f8010108653280262660481cdacf830209ffffffffffffffff780304000300000404000000030506017418a021f99697f8"))));

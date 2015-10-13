@@ -40,7 +40,7 @@ public abstract class BasePipelineFactory implements ChannelPipelineFactory {
     private DistanceHandler distanceHandler;
     private ReverseGeocoderHandler reverseGeocoderHandler;
 
-    protected class OpenChannelHandler extends SimpleChannelHandler {
+    private static class OpenChannelHandler extends SimpleChannelHandler {
 
         private final TrackerServer server;
 
@@ -54,7 +54,7 @@ public abstract class BasePipelineFactory implements ChannelPipelineFactory {
         }
     }
 
-    protected class StandardLoggingHandler extends LoggingHandler {
+    private static class StandardLoggingHandler extends LoggingHandler {
 
         @Override
         public void log(ChannelEvent e) {
@@ -64,7 +64,11 @@ public abstract class BasePipelineFactory implements ChannelPipelineFactory {
 
                 msg.append("[").append(String.format("%08X", e.getChannel().getId())).append(": ");
                 msg.append(((InetSocketAddress) e.getChannel().getLocalAddress()).getPort());
-                msg.append((e instanceof DownstreamMessageEvent) ? " > " : " < ");
+                if (e instanceof DownstreamMessageEvent) {
+                    msg.append(" > ");
+                } else {
+                    msg.append(" < ");
+                }
 
                 msg.append(((InetSocketAddress) event.getRemoteAddress()).getAddress().getHostAddress()).append("]");
 
@@ -82,13 +86,13 @@ public abstract class BasePipelineFactory implements ChannelPipelineFactory {
 
     public BasePipelineFactory(TrackerServer server, String protocol) {
         this.server = server;
-        
+
         resetDelay = Context.getConfig().getInteger(protocol + ".resetDelay", 0);
 
         if (Context.getConfig().getBoolean("filter.enable")) {
             filterHandler = new FilterHandler();
         }
-        
+
         if (Context.getReverseGeocoder() != null) {
             reverseGeocoderHandler = new ReverseGeocoderHandler(
                     Context.getReverseGeocoder(), Context.getConfig().getBoolean("geocode.processInvalidPositions"));

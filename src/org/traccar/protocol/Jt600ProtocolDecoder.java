@@ -15,17 +15,14 @@
  */
 package org.traccar.protocol;
 
-import java.nio.charset.Charset;
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.nio.charset.Charset;
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.helper.ChannelBufferTools;
 import org.traccar.model.Event;
@@ -37,7 +34,13 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private Position decodeNormalMessage(ChannelBuffer buf, Channel channel) throws Exception {
+    private static double convertCoordinate(int raw) {
+        int degrees = raw / 1000000;
+        double minutes = (raw % 1000000) / 10000.0;
+        return degrees + minutes / 60;
+    }
+
+    private Position decodeNormalMessage(ChannelBuffer buf, Channel channel) {
 
         Position position = new Position();
         position.setProtocol(getProtocolName());
@@ -45,7 +48,7 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         buf.readByte(); // header
 
         // Get device by identifier
-        String id = Long.valueOf(ChannelBufferTools.readHexString(buf, 10)).toString();
+        String id = String.valueOf(Long.parseLong(ChannelBufferTools.readHexString(buf, 10)));
         if (!identify(id, channel)) {
             return null;
         }
@@ -53,7 +56,7 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
         // Protocol and type
         int version = ChannelBufferTools.readHexInteger(buf, 1);
-        int type = buf.readUnsignedByte() & 0xf;
+        buf.readUnsignedByte(); // type
 
         buf.readBytes(2); // length
 
@@ -69,14 +72,8 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         position.setTime(time.getTime());
 
         // Coordinates
-        int temp = ChannelBufferTools.readHexInteger(buf, 8);
-        double latitude = temp % 1000000;
-        latitude /= 60 * 10000;
-        latitude += temp / 1000000;
-        temp = ChannelBufferTools.readHexInteger(buf, 9);
-        double longitude = temp % 1000000;
-        longitude /= 60 * 10000;
-        longitude += temp / 1000000;
+        double latitude = convertCoordinate(ChannelBufferTools.readHexInteger(buf, 8));
+        double longitude = convertCoordinate(ChannelBufferTools.readHexInteger(buf, 9));
 
         // Flags
         byte flags = buf.readByte();
@@ -91,9 +88,9 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
         // Course
         position.setCourse(buf.readUnsignedByte() * 2.0);
-        
+
         if (version == 1) {
-            
+
             position.set(Event.KEY_SATELLITES, buf.readUnsignedByte());
 
             // Power
@@ -122,7 +119,7 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         return position;
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "\\(" +
             "([\\d]+)," +                // Id
             "W01," +                     // Type
@@ -141,12 +138,12 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+)," +                  // Alert Type
             ".*\\)");
 
-    private Position decodeAlertMessage(ChannelBuffer buf, Channel channel) throws Exception {
+    private Position decodeAlertMessage(ChannelBuffer buf, Channel channel) {
 
         String message = buf.toString(Charset.defaultCharset());
 
         // Parse message
-        Matcher parser = pattern.matcher(message);
+        Matcher parser = PATTERN.matcher(message);
         if (!parser.matches()) {
             return null;
         }
@@ -164,14 +161,14 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         position.setDeviceId(getDeviceId());
 
         // Longitude
-        Double longitude = Double.valueOf(parser.group(index++));
-        longitude += Double.valueOf(parser.group(index++)) / 60;
+        Double longitude = Double.parseDouble(parser.group(index++));
+        longitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
         // Latitude
-        Double latitude = Double.valueOf(parser.group(index++));
-        latitude += Double.valueOf(parser.group(index++)) / 60;
+        Double latitude = Double.parseDouble(parser.group(index++));
+        latitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
         position.setLatitude(latitude);
 
@@ -181,22 +178,22 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)));
+        position.setSpeed(Double.parseDouble(parser.group(index++)));
 
         // Course
-        position.setCourse(Double.valueOf(parser.group(index++)));
+        position.setCourse(Double.parseDouble(parser.group(index++)));
 
         // Power
-        position.set(Event.KEY_POWER, Double.valueOf(parser.group(index++)));
+        position.set(Event.KEY_POWER, Double.parseDouble(parser.group(index++)));
         return position;
     }
 

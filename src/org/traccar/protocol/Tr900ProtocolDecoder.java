@@ -31,7 +31,7 @@ public class Tr900ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             ">(\\d+)," +                   // ID
             "\\d+," +                      // Period
             "(\\d)," +                     // Fix
@@ -61,7 +61,7 @@ public class Tr900ProtocolDecoder extends BaseProtocolDecoder {
         String sentence = (String) msg;
 
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -83,39 +83,39 @@ public class Tr900ProtocolDecoder extends BaseProtocolDecoder {
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Longitude
         String hemisphere = parser.group(index++);
-        Double longitude = Double.valueOf(parser.group(index++));
-        longitude += Double.valueOf(parser.group(index++)) / 60;
+        Double longitude = Double.parseDouble(parser.group(index++));
+        longitude += Double.parseDouble(parser.group(index++)) / 60;
         if (hemisphere.compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
         // Latitude
         hemisphere = parser.group(index++);
-        Double latitude = Double.valueOf(parser.group(index++));
-        latitude += Double.valueOf(parser.group(index++)) / 60;
+        Double latitude = Double.parseDouble(parser.group(index++));
+        latitude += Double.parseDouble(parser.group(index++)) / 60;
         if (hemisphere.compareTo("S") == 0) latitude = -latitude;
         position.setLatitude(latitude);
 
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)));
+        position.setSpeed(Double.parseDouble(parser.group(index++)));
 
         // Course
-        position.setCourse(Double.valueOf(parser.group(index++)));
+        position.setCourse(Double.parseDouble(parser.group(index++)));
 
         // Other
         position.set(Event.KEY_GSM, parser.group(index++));
-        position.set(Event.KEY_EVENT, Integer.valueOf(parser.group(index++)));
-        position.set(Event.PREFIX_ADC + 1, Integer.valueOf(parser.group(index++)));
-        position.set(Event.KEY_BATTERY, Integer.valueOf(parser.group(index++)));
+        position.set(Event.KEY_EVENT, Integer.parseInt(parser.group(index++)));
+        position.set(Event.PREFIX_ADC + 1, Integer.parseInt(parser.group(index++)));
+        position.set(Event.KEY_BATTERY, Integer.parseInt(parser.group(index++)));
         position.set(Event.KEY_INPUT, parser.group(index++));
         position.set(Event.KEY_STATUS, parser.group(index++));
         return position;

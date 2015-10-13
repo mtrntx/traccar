@@ -16,14 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -34,20 +31,20 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern patternGPRMC = Pattern.compile(
+    private static final Pattern PATTERN_GPRMC = Pattern.compile(
             "\\$GPRMC," +
             "(\\d{2})(\\d{2})(\\d{2})\\.?\\d*," + // Time (HHMMSS.SSS)
             "([AV])," +                    // Validity
             "(\\d{2})(\\d{2}\\.\\d+)," +   // Latitude (DDMM.MMMM)
             "([NS])," +
-            "(\\d{3})(\\d{2}\\.\\d+)," +   // Longitude (DDDMM.MMMM)
+            "(\\d{2,3})(\\d{2}\\.\\d+)," + // Longitude (DDDMM.MMMM)
             "([EW])," +
             "(\\d+\\.?\\d*)?," +           // Speed
             "(\\d+\\.?\\d*)?," +           // Course
             "(\\d{2})(\\d{2})(\\d{2})" +   // Date (DDMMYY)
             ".+");
 
-    private static final Pattern patternGPGGA = Pattern.compile(
+    private static final Pattern PATTERN_GPGGA = Pattern.compile(
             "\\$GPGGA," +
             "(\\d{2})(\\d{2})(\\d{2})\\.?\\d*," + // Time
             "(\\d+)(\\d{2}\\.\\d+)," +     // Latitude
@@ -56,7 +53,7 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             "([EW])," +
             ".+");
 
-    private static final Pattern patternGPRMA = Pattern.compile(
+    private static final Pattern PATTERN_GPRMA = Pattern.compile(
             "\\$GPRMA," +
             "([AV])," +                    // Validity
             "(\\d{2})(\\d{2}\\.\\d+)," +   // Latitude
@@ -66,8 +63,8 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+\\.?\\d*)?," +           // Speed
             "(\\d+\\.?\\d*)?," +           // Course
             ".+");
-    
-    private static final Pattern patternTRCCR = Pattern.compile(
+
+    private static final Pattern PATTERN_TRCCR = Pattern.compile(
             "\\$TRCCR," +
             "(\\d{4})(\\d{2})(\\d{2})" +   // Date (YYYYMMDD)
             "(\\d{2})(\\d{2})(\\d{2})\\.?\\d*," + // Time (HHMMSS.SSS)
@@ -86,7 +83,7 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             throws Exception {
 
         String sentence = (String) msg;
-        
+
         if (!sentence.startsWith("$") && sentence.contains("$")) {
             int index = sentence.indexOf("$");
             String id = sentence.substring(0, index);
@@ -97,33 +94,17 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             sentence = sentence.substring(index);
         }
 
-        // Identification
         if (sentence.startsWith("$PGID")) {
             identify(sentence.substring(6, sentence.length() - 3), channel);
-        }
-
-        // Identification
-        else if (sentence.startsWith("$PCPTI")) {
+        } else if (sentence.startsWith("$PCPTI")) {
             identify(sentence.substring(7, sentence.indexOf(",", 7)), channel);
-        }
-
-        // Identification
-        else if (sentence.startsWith("IMEI")) {
+        } else if (sentence.startsWith("IMEI")) {
             identify(sentence.substring(5, sentence.length()), channel);
-        }
-
-        // Identification
-        else if (sentence.startsWith("$GPFID")) {
+        } else if (sentence.startsWith("$GPFID")) {
             identify(sentence.substring(6, sentence.length()), channel);
-        }
-
-        // Identification
-        else if (Character.isDigit(sentence.charAt(0)) & sentence.length() == 15) {
+        } else if (Character.isDigit(sentence.charAt(0)) && sentence.length() == 15) {
             identify(sentence, channel);
-        }
-
-        // Location
-        else if (sentence.startsWith("$GPRMC") && hasDeviceId()) {
+        } else if (sentence.startsWith("$GPRMC") && hasDeviceId()) {
 
             // Send response
             if (channel != null) {
@@ -131,7 +112,7 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             }
 
             // Parse message
-            Matcher parser = patternGPRMC.matcher(sentence);
+            Matcher parser = PATTERN_GPRMC.matcher(sentence);
             if (!parser.matches()) {
                 return null;
             }
@@ -146,50 +127,48 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             // Time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
 
             // Validity
             position.setValid(parser.group(index++).compareTo("A") == 0);
 
             // Latitude
-            Double latitude = Double.valueOf(parser.group(index++));
-            latitude += Double.valueOf(parser.group(index++)) / 60;
+            Double latitude = Double.parseDouble(parser.group(index++));
+            latitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
             position.setLatitude(latitude);
 
             // Longitude
-            Double longitude = Double.valueOf(parser.group(index++));
-            longitude += Double.valueOf(parser.group(index++)) / 60;
+            Double longitude = Double.parseDouble(parser.group(index++));
+            longitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
             position.setLongitude(longitude);
 
             // Speed
             String speed = parser.group(index++);
             if (speed != null) {
-                position.setSpeed(Double.valueOf(speed));
+                position.setSpeed(Double.parseDouble(speed));
             }
 
             // Course
             String course = parser.group(index++);
             if (course != null) {
-                position.setCourse(Double.valueOf(course));
+                position.setCourse(Double.parseDouble(course));
             }
 
             // Date
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+            time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
             position.setTime(time.getTime());
             return position;
-        }
 
-        // Location
-        else if (sentence.startsWith("$GPGGA") && hasDeviceId()) {
+        } else if (sentence.startsWith("$GPGGA") && hasDeviceId()) {
 
             // Parse message
-            Matcher parser = patternGPGGA.matcher(sentence);
+            Matcher parser = PATTERN_GPGGA.matcher(sentence);
             if (!parser.matches()) {
                 return null;
             }
@@ -203,9 +182,9 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
 
             // Time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
             time.set(Calendar.MILLISECOND, 0);
             position.setTime(time.getTime());
 
@@ -213,24 +192,22 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             position.setValid(true);
 
             // Latitude
-            Double latitude = Double.valueOf(parser.group(index++));
-            latitude += Double.valueOf(parser.group(index++)) / 60;
+            Double latitude = Double.parseDouble(parser.group(index++));
+            latitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
             position.setLatitude(latitude);
 
             // Longitude
-            Double longitude = Double.valueOf(parser.group(index++));
-            longitude += Double.valueOf(parser.group(index++)) / 60;
+            Double longitude = Double.parseDouble(parser.group(index++));
+            longitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
             position.setLongitude(longitude);
             return position;
-        }
 
-        // Location
-        else if (sentence.startsWith("$GPRMA") && hasDeviceId()) {
+        } else if (sentence.startsWith("$GPRMA") && hasDeviceId()) {
 
             // Parse message
-            Matcher parser = patternGPRMA.matcher(sentence);
+            Matcher parser = PATTERN_GPRMA.matcher(sentence);
             if (!parser.matches()) {
                 return null;
             }
@@ -249,36 +226,34 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             position.setValid(parser.group(index++).compareTo("A") == 0);
 
             // Latitude
-            Double latitude = Double.valueOf(parser.group(index++));
-            latitude += Double.valueOf(parser.group(index++)) / 60;
+            Double latitude = Double.parseDouble(parser.group(index++));
+            latitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
             position.setLatitude(latitude);
 
             // Longitude
-            Double longitude = Double.valueOf(parser.group(index++));
-            longitude += Double.valueOf(parser.group(index++)) / 60;
+            Double longitude = Double.parseDouble(parser.group(index++));
+            longitude += Double.parseDouble(parser.group(index++)) / 60;
             if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
             position.setLongitude(longitude);
 
             // Speed
             String speed = parser.group(index++);
             if (speed != null) {
-                position.setSpeed(Double.valueOf(speed));
+                position.setSpeed(Double.parseDouble(speed));
             }
 
             // Course
             String course = parser.group(index++);
             if (course != null) {
-                position.setCourse(Double.valueOf(course));
+                position.setCourse(Double.parseDouble(course));
             }
             return position;
-        }
 
-        // Location
-        else if (sentence.startsWith("$TRCCR") && hasDeviceId()) {
+        } else if (sentence.startsWith("$TRCCR") && hasDeviceId()) {
 
             // Parse message
-            Matcher parser = patternTRCCR.matcher(sentence);
+            Matcher parser = PATTERN_TRCCR.matcher(sentence);
             if (!parser.matches()) {
                 return null;
             }
@@ -293,23 +268,23 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             // Time
             Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             time.clear();
-            time.set(Calendar.YEAR, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.YEAR, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+            time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
             position.setTime(time.getTime());
 
             // Validity
             position.setValid(parser.group(index++).compareTo("A") == 0);
 
             // Location
-            position.setLatitude(Double.valueOf(parser.group(index++)));
-            position.setLongitude(Double.valueOf(parser.group(index++)));
-            position.setSpeed(Double.valueOf(parser.group(index++)));
-            position.setCourse(Double.valueOf(parser.group(index++)));
-            position.setAltitude(Double.valueOf(parser.group(index++)));
+            position.setLatitude(Double.parseDouble(parser.group(index++)));
+            position.setLongitude(Double.parseDouble(parser.group(index++)));
+            position.setSpeed(Double.parseDouble(parser.group(index++)));
+            position.setCourse(Double.parseDouble(parser.group(index++)));
+            position.setAltitude(Double.parseDouble(parser.group(index++)));
 
             // Battery
             position.set(Event.KEY_BATTERY, parser.group(index++));

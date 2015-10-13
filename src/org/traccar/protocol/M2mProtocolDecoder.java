@@ -16,12 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
@@ -32,7 +31,7 @@ public class M2mProtocolDecoder extends BaseProtocolDecoder {
     public M2mProtocolDecoder(M2mProtocol protocol) {
         super(protocol);
     }
-    
+
     private boolean firstPacket = true;
 
     @Override
@@ -51,7 +50,7 @@ public class M2mProtocolDecoder extends BaseProtocolDecoder {
         }
 
         if (firstPacket) {
-            
+
             firstPacket = false;
 
             // Read IMEI
@@ -68,7 +67,7 @@ public class M2mProtocolDecoder extends BaseProtocolDecoder {
             identify(imei.toString(), channel);
 
         } else if (hasDeviceId()) {
-            
+
             // Create new position
             Position position = new Position();
             position.setProtocol(getProtocolName());
@@ -84,7 +83,7 @@ public class M2mProtocolDecoder extends BaseProtocolDecoder {
             time.set(Calendar.MINUTE, buf.readUnsignedByte() & 0x7f);
             time.set(Calendar.SECOND, buf.readUnsignedByte() & 0x7f);
             position.setTime(time.getTime());
-            
+
             // Location
             int degrees = buf.readUnsignedByte();
             double latitude = buf.readUnsignedByte();
@@ -101,14 +100,14 @@ public class M2mProtocolDecoder extends BaseProtocolDecoder {
             longitude += buf.readUnsignedByte() / 10000.0;
             longitude /= 60;
             longitude += degrees;
-            
+
             if ((b & 0x80) != 0) {
                 longitude = -longitude;
             }
             if ((b & 0x40) != 0) {
                 latitude = -latitude;
             }
-            
+
             position.setLatitude(latitude);
             position.setLongitude(longitude);
             position.setSpeed(buf.readUnsignedByte());

@@ -19,7 +19,6 @@ import java.net.SocketAddress;
 import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.TimeZone;
@@ -27,7 +26,7 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.helper.Crc;
+import org.traccar.helper.Checksum;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -86,9 +85,9 @@ public class CastelProtocolDecoder extends BaseProtocolDecoder {
         int version = buf.readUnsignedByte();
         ChannelBuffer id = buf.readBytes(20);
         int type = ChannelBuffers.swapShort(buf.readShort());
-        
+
         if (type == MSG_HEARTBEAT) {
-            
+
             if (channel != null) {
                 ChannelBuffer response = ChannelBuffers.directBuffer(ByteOrder.LITTLE_ENDIAN, 31);
                 response.writeByte(0x40); response.writeByte(0x40);
@@ -96,7 +95,7 @@ public class CastelProtocolDecoder extends BaseProtocolDecoder {
                 response.writeByte(version);
                 response.writeBytes(id);
                 response.writeShort(ChannelBuffers.swapShort(MSG_HEARTBEAT_RESPONSE));
-                response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(0, response.writerIndex())));
+                response.writeShort(Checksum.crc16(Checksum.CRC16_X25, response.toByteBuffer(0, response.writerIndex())));
                 response.writeByte(0x0D); response.writeByte(0x0A);
                 channel.write(response, remoteAddress);
             }
@@ -107,28 +106,26 @@ public class CastelProtocolDecoder extends BaseProtocolDecoder {
                 type == MSG_GPS ||
                 type == MSG_ALARM ||
                 type == MSG_CURRENT_LOCATION) {
-            
+
             if (!identify(id.toString(Charset.defaultCharset()).trim(), channel, remoteAddress)) {
 
                 return null;
 
-            } else if (type == MSG_LOGIN) {
+            } else if (type == MSG_LOGIN && channel != null) {
 
-                if (channel != null) {
-                    ChannelBuffer response = ChannelBuffers.directBuffer(ByteOrder.LITTLE_ENDIAN, 41);
-                    response.writeByte(0x40); response.writeByte(0x40);
-                    response.writeShort(response.capacity());
-                    response.writeByte(version);
-                    response.writeBytes(id);
-                    response.writeShort(ChannelBuffers.swapShort(MSG_LOGIN_RESPONSE));
-                    response.writeInt(0xFFFFFFFF);
-                    response.writeShort(0);
-                    response.writeInt((int) (new Date().getTime() / 1000));
-                    response.writeShort(Crc.crc16Ccitt(response.toByteBuffer(0, response.writerIndex())));
-                    response.writeByte(0x0D); response.writeByte(0x0A);
-                    channel.write(response, remoteAddress);
-                }
-            
+                ChannelBuffer response = ChannelBuffers.directBuffer(ByteOrder.LITTLE_ENDIAN, 41);
+                response.writeByte(0x40); response.writeByte(0x40);
+                response.writeShort(response.capacity());
+                response.writeByte(version);
+                response.writeBytes(id);
+                response.writeShort(ChannelBuffers.swapShort(MSG_LOGIN_RESPONSE));
+                response.writeInt(0xFFFFFFFF);
+                response.writeShort(0);
+                response.writeInt((int) (System.currentTimeMillis() / 1000));
+                response.writeShort(Checksum.crc16(Checksum.CRC16_X25, response.toByteBuffer(0, response.writerIndex())));
+                response.writeByte(0x0D); response.writeByte(0x0A);
+                channel.write(response, remoteAddress);
+
             }
 
             if (type == MSG_GPS) {
@@ -138,7 +135,7 @@ public class CastelProtocolDecoder extends BaseProtocolDecoder {
             } else if (type == MSG_CURRENT_LOCATION) {
                 buf.readUnsignedShort();
             }
-            
+
             buf.readUnsignedInt(); // ACC ON time
             buf.readUnsignedInt(); // UTC time
             long odometer = buf.readUnsignedInt();
@@ -147,7 +144,7 @@ public class CastelProtocolDecoder extends BaseProtocolDecoder {
             buf.readUnsignedShort(); // current fuel consumption
             long status = buf.readUnsignedInt();
             buf.skipBytes(8);
-            
+
             int count = buf.readUnsignedByte();
 
             List<Position> positions = new LinkedList<>();
@@ -184,7 +181,7 @@ public class CastelProtocolDecoder extends BaseProtocolDecoder {
 
             return position;
         }
-        
+
         return null;
     }
 

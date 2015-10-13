@@ -16,14 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -34,7 +31,7 @@ public class YwtProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "%(..)," +                     // Type
             "(\\d+):" +                    // Unit identifier
             "\\d+," +                      // Subtype
@@ -69,17 +66,17 @@ public class YwtProtocolDecoder extends BaseProtocolDecoder {
             if (end == -1) {
                 end = sentence.length();
             }
-            
+
             channel.write("%AT+SN=" + sentence.substring(start, end));
             return null;
         }
-        
+
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
-        
+
         // Create new position
         Position position = new Position();
         position.setProtocol(getProtocolName());
@@ -91,59 +88,58 @@ public class YwtProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
         position.setDeviceId(getDeviceId());
-        
+
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Longitude
         String hemisphere = parser.group(index++);
-        Double longitude = Double.valueOf(parser.group(index++));
+        Double longitude = Double.parseDouble(parser.group(index++));
         if (hemisphere.compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
         // Latitude
         hemisphere = parser.group(index++);
-        Double latitude = Double.valueOf(parser.group(index++));
+        Double latitude = Double.parseDouble(parser.group(index++));
         if (hemisphere.compareTo("S") == 0) latitude = -latitude;
         position.setLatitude(latitude);
-        
+
         // Altitude
         String altitude = parser.group(index++);
         if (altitude != null) {
-            position.setAltitude(Double.valueOf(altitude));
+            position.setAltitude(Double.parseDouble(altitude));
         }
 
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)));
+        position.setSpeed(Double.parseDouble(parser.group(index++)));
 
         // Course
-        position.setCourse(Double.valueOf(parser.group(index++)));
-        
+        position.setCourse(Double.parseDouble(parser.group(index++)));
+
         // Satellites
-        int satellites = Integer.valueOf(parser.group(index++));
+        int satellites = Integer.parseInt(parser.group(index++));
         position.setValid(satellites >= 3);
         position.set(Event.KEY_SATELLITES, satellites);
-        
+
         // Report identifier
         String reportId = parser.group(index++);
-        
+
         // Status
         position.set(Event.KEY_STATUS, parser.group(index++));
 
         // Send response
-        if (type.equals("KP") || type.equals("EP") || type.equals("EP")) {
-            if (channel != null) {
-                channel.write("%AT+" + type + "=" + reportId + "\r\n");
-            }
+        if ((type.equals("KP") || type.equals("EP")) && channel != null) {
+            channel.write("%AT+" + type + "=" + reportId + "\r\n");
         }
+
         return position;
     }
 

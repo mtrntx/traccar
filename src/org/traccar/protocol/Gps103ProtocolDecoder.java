@@ -31,7 +31,7 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "imei:" +
             "(\\d+)," +                         // IMEI
             "([^,]+)," +                        // Alarm
@@ -58,7 +58,7 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             "([^,;]+)?,?" +
             ".*");
 
-    private static final Pattern handshakePattern = Pattern.compile("##,imei:(\\d+),A");
+    private static final Pattern PATTERN_HANDSHAKE = Pattern.compile("##,imei:(\\d+),A");
 
     @Override
     protected Object decode(
@@ -71,7 +71,7 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         if (sentence.contains("##")) {
             if (channel != null) {
                 channel.write("LOAD", remoteAddress);
-                Matcher handshakeMatcher = handshakePattern.matcher(sentence);
+                Matcher handshakeMatcher = PATTERN_HANDSHAKE.matcher(sentence);
                 if (handshakeMatcher.matches()) {
                     identify(handshakeMatcher.group(1), channel);
                 }
@@ -88,7 +88,7 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         }
 
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -116,13 +116,13 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        
-        int localHours = Integer.valueOf(parser.group(index++));
-        int localMinutes = Integer.valueOf(parser.group(index++));
-        
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+
+        int localHours = Integer.parseInt(parser.group(index++));
+        int localMinutes = Integer.parseInt(parser.group(index++));
+
         String utcHours = parser.group(index++);
         String utcMinutes = parser.group(index++);
 
@@ -131,17 +131,17 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.MINUTE, localMinutes);
         String seconds = parser.group(index++);
         if (seconds != null) {
-            time.set(Calendar.SECOND, Integer.valueOf(seconds));
+            time.set(Calendar.SECOND, Integer.parseInt(seconds));
         }
         String milliseconds = parser.group(index++);
         if (milliseconds != null) {
-            time.set(Calendar.MILLISECOND, Integer.valueOf(milliseconds));
+            time.set(Calendar.MILLISECOND, Integer.parseInt(milliseconds));
         }
-        
+
         // Timezone calculation
         if (utcHours != null && utcMinutes != null) {
-            int deltaMinutes = (localHours - Integer.valueOf(utcHours)) * 60;
-            deltaMinutes += localMinutes - Integer.valueOf(utcMinutes);
+            int deltaMinutes = (localHours - Integer.parseInt(utcHours)) * 60;
+            deltaMinutes += localMinutes - Integer.parseInt(utcMinutes);
             if (deltaMinutes <= -12 * 60) {
                 deltaMinutes += 24 * 60;
             } else if (deltaMinutes > 12 * 60) {
@@ -156,8 +156,8 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
 
         // Latitude
         String hemisphere = parser.group(index++);
-        Double latitude = Double.valueOf(parser.group(index++));
-        latitude += Double.valueOf(parser.group(index++)) / 60;
+        Double latitude = Double.parseDouble(parser.group(index++));
+        latitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index) != null) {
             hemisphere = parser.group(index);
         }
@@ -169,8 +169,8 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
 
         // Longitude
         hemisphere = parser.group(index++);
-        Double longitude = Double.valueOf(parser.group(index++));
-        longitude += Double.valueOf(parser.group(index++)) / 60;
+        Double longitude = Double.parseDouble(parser.group(index++));
+        longitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index) != null) {
             hemisphere = parser.group(index);
         }
@@ -181,29 +181,27 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         position.setLongitude(longitude);
 
         // Speed
-        String speed = parser.group(index++);        
+        String speed = parser.group(index++);
         if (speed != null) {
-            position.setSpeed(Double.valueOf(speed));
+            position.setSpeed(Double.parseDouble(speed));
         }
-        
+
         // Course
         String course = parser.group(index++);
         if (course != null) {
-            position.setCourse(Double.valueOf(course));
+            position.setCourse(Double.parseDouble(course));
         }
 
         // Altitude
         String altitude = parser.group(index++);
         if (altitude != null) {
-            position.setAltitude(Double.valueOf(altitude));
+            position.setAltitude(Double.parseDouble(altitude));
         }
 
         // Additional data
-        position.set(Event.PREFIX_IO + 1, parser.group(index++));
-        position.set(Event.PREFIX_IO + 2, parser.group(index++));
-        position.set(Event.PREFIX_IO + 3, parser.group(index++));
-        position.set(Event.PREFIX_IO + 4, parser.group(index++));
-        position.set(Event.PREFIX_IO + 5, parser.group(index++));
+        for (int i = 1; i <= 5; i++) {
+            position.set(Event.PREFIX_IO + i, parser.group(index++));
+        }
 
         return position;
     }

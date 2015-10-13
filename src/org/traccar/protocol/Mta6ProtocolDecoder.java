@@ -15,9 +15,9 @@
  */
 package org.traccar.protocol;
 
-import java.nio.charset.Charset;
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.nio.charset.Charset;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -25,22 +25,22 @@ import java.util.TimeZone;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.handler.codec.http.DefaultHttpResponse;
 import org.jboss.netty.handler.codec.http.HttpRequest;
 import org.jboss.netty.handler.codec.http.HttpResponse;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 import org.jboss.netty.handler.codec.http.HttpVersion;
 import org.traccar.BaseProtocolDecoder;
-import org.traccar.helper.BitUtil;
 import org.traccar.Protocol;
+import org.traccar.helper.BitUtil;
 import org.traccar.helper.ChannelBufferTools;
+import org.traccar.helper.Log;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
-    
-    private boolean simple;
+
+    private final boolean simple;
 
     public Mta6ProtocolDecoder(Protocol protocol, boolean simple) {
         super(protocol);
@@ -52,7 +52,7 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
                 HttpVersion.HTTP_1_1, HttpResponseStatus.CONTINUE);
         channel.write(response);
     }
-    
+
     private void sendResponse(Channel channel, short packetId, short packetCount) {
         HttpResponse response = new DefaultHttpResponse(
                 HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
@@ -62,18 +62,17 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
         end.writeByte(packetId);
         end.writeByte(packetCount);
         end.writeByte(0);
-        
+
         response.setContent(ChannelBuffers.wrappedBuffer(begin, end));
         channel.write(response);
     }
-    
+
     private static class FloatReader {
-        
+
         private int previousFloat;
-        
+
         public float readFloat(ChannelBuffer buf) {
-            switch (buf.getUnsignedByte(buf.readerIndex()) >> 6)
-            {
+            switch (buf.getUnsignedByte(buf.readerIndex()) >> 6) {
                 case 0:
                     previousFloat = buf.readInt() << 2;
                     break;
@@ -86,16 +85,19 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
                 case 3:
                     previousFloat = (previousFloat & 0xff000000) + ((buf.readUnsignedMedium() & 0x3fffff) << 2);
                     break;
+                default:
+                    Log.warning(new IllegalArgumentException());
+                    break;
             }
             return Float.intBitsToFloat(previousFloat);
         }
-        
+
     }
-    
+
     private static class TimeReader extends FloatReader {
-        
+
         private long weekNumber;
-        
+
         public Date readTime(ChannelBuffer buf) {
             long weekTime = (long) (readFloat(buf) * 1000);
             if (weekNumber == 0) {
@@ -111,16 +113,16 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
 
             return new Date(offset + weekNumber * 7 * 24 * 60 * 60 * 1000 + weekTime);
         }
-        
+
     }
 
     private List<Position> parseFormatA(ChannelBuffer buf) {
         List<Position> positions = new LinkedList<>();
-        
+
         FloatReader latitudeReader = new FloatReader();
         FloatReader longitudeReader = new FloatReader();
         TimeReader timeReader = new TimeReader();
-        
+
         try {
             while (buf.readable()) {
                 Position position = new Position();
@@ -196,8 +198,9 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
                 positions.add(position);
             }
         } catch (IndexOutOfBoundsException error) {
+            Log.warning(error);
         }
-        
+
         return positions;
     }
 
@@ -271,17 +274,17 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
             position.setValid(satellites >= 3);
             position.set(Event.KEY_SATELLITES, satellites);
         }
-        
+
         // TODO: process other data
 
         return position;
     }
-    
+
     @Override
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
-        
+
         HttpRequest request = (HttpRequest) msg;
 
         ChannelBuffer buf = request.getContent();
@@ -296,21 +299,21 @@ public class Mta6ProtocolDecoder extends BaseProtocolDecoder {
         }
         buf.skipBytes(uniqueId.length());
         buf.skipBytes("&bin=".length());
-        
+
         // Read header
         short packetId = buf.readUnsignedByte();
         short offset = buf.readUnsignedByte(); // dataOffset
         short packetCount = buf.readUnsignedByte();
         buf.readUnsignedByte(); // reserved
-        short parameters = buf.readUnsignedByte(); // TODO: handle timezone
+        buf.readUnsignedByte(); // TODO: handle timezone
         buf.skipBytes(offset - 5);
-        
+
         // Send response
         if (channel != null) {
             sendContinue(channel);
             sendResponse(channel, packetId, packetCount);
         }
-        
+
         // Parse data
         if (packetId == 0x31 || packetId == 0x32 || packetId == 0x36) {
             if (simple) {

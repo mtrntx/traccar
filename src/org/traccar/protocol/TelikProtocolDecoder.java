@@ -16,14 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -34,7 +31,7 @@ public class TelikProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "\\d{4}" +
             "(\\d{6})" +                  // Device ID
             "(\\d+)," +                   // Type
@@ -56,7 +53,7 @@ public class TelikProtocolDecoder extends BaseProtocolDecoder {
             throws Exception {
 
         // Parse message
-        Matcher parser = pattern.matcher((String) msg);
+        Matcher parser = PATTERN.matcher((String) msg);
         if (!parser.matches()) {
             return null;
         }
@@ -75,30 +72,30 @@ public class TelikProtocolDecoder extends BaseProtocolDecoder {
 
         // Message type
         position.set(Event.KEY_TYPE, parser.group(index++));
-        
+
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
-        
+
         // Location
-        position.setLongitude(Double.valueOf(parser.group(index++)) / 10000);
-        position.setLatitude(Double.valueOf(parser.group(index++)) / 10000);
+        position.setLongitude(Double.parseDouble(parser.group(index++)) / 10000);
+        position.setLatitude(Double.parseDouble(parser.group(index++)) / 10000);
 
         // Validity
         position.setValid(parser.group(index++).compareTo("1") != 0);
 
         // Speed
-        position.setSpeed(Double.valueOf(parser.group(index++)));
+        position.setSpeed(Double.parseDouble(parser.group(index++)));
 
         // Course
-        position.setCourse(Double.valueOf(parser.group(index++)));
+        position.setCourse(Double.parseDouble(parser.group(index++)));
 
         // Satellites
         position.set(Event.KEY_SATELLITES, parser.group(index++));

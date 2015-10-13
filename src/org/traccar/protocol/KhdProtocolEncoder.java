@@ -18,13 +18,14 @@ package org.traccar.protocol;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.traccar.BaseProtocolEncoder;
-import org.traccar.helper.Crc;
+import org.traccar.helper.Checksum;
+import org.traccar.helper.Log;
 import org.traccar.model.Command;
 
 public class KhdProtocolEncoder extends BaseProtocolEncoder {
 
-    private static final int MSG_CUT_OIL = 0x39;
-    private static final int MSG_RESUME_OIL = 0x38;
+    public static final int MSG_CUT_OIL = 0x39;
+    public static final int MSG_RESUME_OIL = 0x38;
 
     private ChannelBuffer encodeCommand(int command) {
 
@@ -38,12 +39,12 @@ public class KhdProtocolEncoder extends BaseProtocolEncoder {
 
         buf.writeInt(0); // terminal id
 
-        buf.writeByte(Crc.xorChecksum(buf.toByteBuffer()));
+        buf.writeByte(Checksum.xor(buf.toByteBuffer()));
         buf.writeByte(0x0D); // ending
 
         return buf;
     }
-    
+
     @Override
     protected Object encodeCommand(Command command) {
 
@@ -52,9 +53,12 @@ public class KhdProtocolEncoder extends BaseProtocolEncoder {
                 return encodeCommand(MSG_CUT_OIL);
             case Command.TYPE_ENGINE_RESUME:
                 return encodeCommand(MSG_RESUME_OIL);
+            default:
+                Log.warning(new UnsupportedOperationException(command.getType()));
+                break;
         }
 
         return null;
     }
-    
+
 }

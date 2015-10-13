@@ -30,13 +30,13 @@ public class AutoFon45FrameDecoder extends FrameDecoder {
             ChannelHandlerContext ctx,
             Channel channel,
             ChannelBuffer buf) throws Exception {
-        
+
         // Check minimum length
         if (buf.readableBytes() < 12) {
             return null;
         }
 
-        int length = 0;
+        int length;
         switch (buf.getUnsignedByte(buf.readerIndex())) {
             case MSG_LOGIN:
                 length = 19;
@@ -44,8 +44,11 @@ public class AutoFon45FrameDecoder extends FrameDecoder {
             case MSG_LOCATION:
                 length = 34;
                 break;
+            default:
+                length = 0;
+                break;
         }
-        
+
         // Check length and return buffer
         if (length != 0 && buf.readableBytes() >= length) {
             return buf.readBytes(length);

@@ -24,7 +24,6 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.text.ParseException;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
@@ -47,11 +46,11 @@ import org.traccar.web.JsonConverter;
 public class DataManager implements IdentityManager {
 
     private static final long DEFAULT_REFRESH_DELAY = 300;
-    
+
     private final Config config;
-    
+
     private DataSource dataSource;
-    
+
     private final Map<Long, Device> devicesById = new HashMap<>();
     private final Map<String, Device> devicesByUniqueId = new HashMap<>();
     private long devicesLastUpdate;
@@ -65,13 +64,13 @@ public class DataManager implements IdentityManager {
 
         devicesRefreshDelay = config.getLong("database.refreshDelay", DEFAULT_REFRESH_DELAY) * 1000;
     }
-    
+
     public DataSource getDataSource() {
         return dataSource;
     }
 
     private void initDatabase() throws Exception {
-        
+
         String jndiName = config.getString("database.jndi");
 
         if (jndiName != null) {
@@ -110,7 +109,7 @@ public class DataManager implements IdentityManager {
             dataSource = ds;
         }
     }
-    
+
     @Override
     public Device getDeviceById(long id) {
         return devicesById.get(id);
@@ -119,7 +118,7 @@ public class DataManager implements IdentityManager {
     @Override
     public Device getDeviceByUniqueId(String uniqueId) throws SQLException {
 
-        if ((new Date().getTime() - devicesLastUpdate > devicesRefreshDelay) || !devicesByUniqueId.containsKey(uniqueId)) {
+        if (System.currentTimeMillis() - devicesLastUpdate > devicesRefreshDelay || !devicesByUniqueId.containsKey(uniqueId)) {
 
             devicesById.clear();
             devicesByUniqueId.clear();
@@ -127,12 +126,12 @@ public class DataManager implements IdentityManager {
                 devicesById.put(device.getId(), device);
                 devicesByUniqueId.put(device.getUniqueId(), device);
             }
-            devicesLastUpdate = new Date().getTime();
+            devicesLastUpdate = System.currentTimeMillis();
         }
 
         return devicesByUniqueId.get(uniqueId);
     }
-    
+
     private String getQuery(String key) {
         String query = config.getString(key);
         if (query == null) {
@@ -143,25 +142,27 @@ public class DataManager implements IdentityManager {
 
     private void initDatabaseSchema() throws SQLException {
 
-        if (!config.getBoolean("web.old")) {
-
-            Connection connection = dataSource.getConnection();
-            ResultSet result = connection.getMetaData().getTables(
-                    connection.getCatalog(), null, null, null);
+        if (config.getString("web.type", "new").equals("new") || config.getString("web.type", "new").equals("api")) {
 
             boolean exist = false;
-            String checkTable = config.getString("database.checkTable");
-            while (result.next()) {
-                if (result.getString("TABLE_NAME").equalsIgnoreCase(checkTable)) {
-                    exist = true;
-                    break;
+
+            try (Connection connection = dataSource.getConnection();
+                 ResultSet result = connection.getMetaData().getTables(connection.getCatalog(), null, null, null)) {
+
+                String checkTable = config.getString("database.checkTable");
+                while (result.next()) {
+                    if (result.getString("TABLE_NAME").equalsIgnoreCase(checkTable)) {
+                        exist = true;
+                        break;
+                    }
                 }
             }
+
             if (exist) {
-                
+
                 String schemaVersionQuery = getQuery("database.selectSchemaVersion");
                 if (schemaVersionQuery != null) {
-                
+
                     Schema schema = QueryBuilder.create(dataSource, schemaVersionQuery).executeQuerySingle(new Schema());
 
                     int version = 0;
@@ -174,29 +175,30 @@ public class DataManager implements IdentityManager {
                         throw new RuntimeException();
                     }
                 }
-                
-                return;
+
+            } else {
+
+                QueryBuilder.create(dataSource, getQuery("database.createSchema")).executeUpdate();
+
+                User admin = new User();
+                admin.setName("admin");
+                admin.setEmail("admin");
+                admin.setAdmin(true);
+                admin.setPassword("admin");
+                addUser(admin);
+
+                Server server = new Server();
+                server.setRegistration(true);
+                QueryBuilder.create(dataSource, getQuery("database.insertServer"))
+                        .setObject(server)
+                        .executeUpdate();
+
+                mockData(admin.getId());
+
             }
-
-            QueryBuilder.create(dataSource, getQuery("database.createSchema")).executeUpdate();
-
-            User admin = new User();
-            admin.setName("admin");
-            admin.setEmail("admin");
-            admin.setAdmin(true);
-            admin.setPassword("admin");
-            addUser(admin);
-
-            Server server = new Server();
-            server.setRegistration(true);
-            QueryBuilder.create(dataSource, getQuery("database.insertServer"))
-                    .setObject(server)
-                    .executeUpdate();
-
-            mockData(admin.getId());
         }
     }
-    
+
     private void mockData(long userId) {
         if (config.getBoolean("database.mock")) {
             try {
@@ -224,10 +226,10 @@ public class DataManager implements IdentityManager {
                 position.setLatitude(-36.8932371);
                 position.setLongitude(174.7743053);
                 addPosition(position);
-                
+
                 updateLatestPosition(position);
 
-            } catch (SQLException | ParseException error) {
+            } catch (SQLException error) {
                 Log.warning(error);
             }
         }
@@ -256,7 +258,7 @@ public class DataManager implements IdentityManager {
                 .setObject(user)
                 .executeUpdate());
     }
-    
+
     public void updateUser(User user) throws SQLException {
         QueryBuilder.create(dataSource, getQuery("database.updateUser"))
                 .setObject(user)
@@ -289,26 +291,26 @@ public class DataManager implements IdentityManager {
                 .setLong("userId", userId)
                 .executeQuery(new Device());
     }
-    
+
     public void addDevice(Device device) throws SQLException {
         device.setId(QueryBuilder.create(dataSource, getQuery("database.insertDevice"), true)
                 .setObject(device)
                 .executeUpdate());
     }
-    
+
     public void updateDevice(Device device) throws SQLException {
         QueryBuilder.create(dataSource, getQuery("database.updateDevice"))
                 .setObject(device)
                 .executeUpdate();
     }
-    
+
     public void removeDevice(Device device) throws SQLException {
         QueryBuilder.create(dataSource, getQuery("database.deleteDevice"))
                 .setObject(device)
                 .executeUpdate();
         AsyncServlet.sessionRefreshDevice(device.getId());
     }
-    
+
     public void linkDevice(long userId, long deviceId) throws SQLException {
         QueryBuilder.create(dataSource, getQuery("database.linkDevice"))
                 .setLong("userId", userId)
@@ -331,7 +333,8 @@ public class DataManager implements IdentityManager {
                 .setDate("time", position.getFixTime()) // tmp
                 .setLong("device_id", position.getDeviceId()) // tmp
                 .setLong("power", 0) // tmp
-                .setString("extended_info", MiscFormatter.toXmlString(position.getOther())) // tmp
+                .setString("extended_info", MiscFormatter.toXmlString(position.getAttributes())) // tmp
+                .setString("other", MiscFormatter.toXmlString(position.getAttributes())) // tmp
                 .executeUpdate());
     }
 
@@ -341,7 +344,8 @@ public class DataManager implements IdentityManager {
                 .setDate("time", position.getFixTime()) // tmp
                 .setLong("device_id", position.getDeviceId()) // tmp
                 .setLong("power", 0) // tmp
-                .setString("extended_info", MiscFormatter.toXmlString(position.getOther())) // tmp
+                .setString("extended_info", MiscFormatter.toXmlString(position.getAttributes())) // tmp
+                .setString("other", MiscFormatter.toXmlString(position.getAttributes())) // tmp
                 .executeUpdate();
     }
 

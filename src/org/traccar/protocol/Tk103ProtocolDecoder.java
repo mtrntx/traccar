@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2014 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2015 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.Context;
+import org.traccar.helper.BitUtil;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -33,8 +34,7 @@ public class Tk103ProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    //088048003342 BR00 150807 A 1352.9871 N 10030.9084 E 000.0 110718 000.0 001010000 L00000000
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "(\\d+)(,)?" +                 // Device ID
             ".{4},?" +                     // Command
             "\\d*" +                       // IMEI (?)
@@ -46,8 +46,8 @@ public class Tk103ProtocolDecoder extends BaseProtocolDecoder {
             "([EW]),?" +
             "(\\d+\\.\\d)(?:\\d*,)?" +     // Speed
             "(\\d{2})(\\d{2})(\\d{2}),?" + // Time (HHMMSS)
-            "(\\d+\\.?\\d),?" +            // Course
-            "([0-9a-fA-F]{8})?,?" +        // State
+            "(\\d+\\.?\\d{1,2}),?" +       // Course
+            "(?:([01]{8})|([0-9a-fA-F]{8}))?,?" + // State
             "(?:L([0-9a-fA-F]+))?.*\\)?"); // Odometer
 
     @Override
@@ -62,7 +62,7 @@ public class Tk103ProtocolDecoder extends BaseProtocolDecoder {
         if (beginIndex != -1) {
             sentence = sentence.substring(beginIndex + 1);
         }
-        
+
         // Send response
         if (channel != null) {
             String id = sentence.substring(0, 12);
@@ -76,7 +76,7 @@ public class Tk103ProtocolDecoder extends BaseProtocolDecoder {
         }
 
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -96,48 +96,56 @@ public class Tk103ProtocolDecoder extends BaseProtocolDecoder {
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
         if (parser.group(index++) == null) {
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+            time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
         } else {
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+            time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+            time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+            time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
         }
 
         // Validity
         position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Latitude
-        Double latitude = Double.valueOf(parser.group(index++));
-        latitude += Double.valueOf(parser.group(index++)) / 60;
+        Double latitude = Double.parseDouble(parser.group(index++));
+        latitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
         position.setLatitude(latitude);
 
         // Longitude
-        Double longitude = Double.valueOf(parser.group(index++));
-        longitude += Double.valueOf(parser.group(index++)) / 60;
+        Double longitude = Double.parseDouble(parser.group(index++));
+        longitude += Double.parseDouble(parser.group(index++)) / 60;
         if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
         position.setLongitude(longitude);
 
         // Speed
         if (Context.getConfig().getBoolean(getProtocolName() + ".mph")) {
-            position.setSpeed(UnitsConverter.knotsFromMph(Double.valueOf(parser.group(index++))));
+            position.setSpeed(UnitsConverter.knotsFromMph(Double.parseDouble(parser.group(index++))));
         } else {
-            position.setSpeed(UnitsConverter.knotsFromKph(Double.valueOf(parser.group(index++))));
+            position.setSpeed(UnitsConverter.knotsFromKph(Double.parseDouble(parser.group(index++))));
         }
 
         // Time
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
 
         // Course
-        position.setCourse(Double.valueOf(parser.group(index++)));
-        
+        position.setCourse(Double.parseDouble(parser.group(index++)));
+
         // State
-        position.set(Event.KEY_STATUS, parser.group(index++));
+        String status = parser.group(index++); // binary status
+        if (status != null) {
+            position.set(Event.KEY_STATUS, status);
+
+            int value = Integer.parseInt(status, 2);
+            position.set(Event.KEY_CHARGE, !BitUtil.check(value, 0));
+            position.set(Event.KEY_IGNITION, BitUtil.check(value, 1));
+        }
+        position.set(Event.KEY_STATUS, parser.group(index++)); // hex status
 
         // Odometer
         String odometer = parser.group(index++);

@@ -16,14 +16,11 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -34,7 +31,7 @@ public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern pattern = Pattern.compile(
+    private static final Pattern PATTERN = Pattern.compile(
             "(?:.+,)?(\\d+)," +            // Device Identifier
             "(\\d{4})(\\d{2})(\\d{2})" +   // Date (YYYYMMDD)
             "(\\d{2})(\\d{2})(\\d{2})," +  // Time (HHMMSS)
@@ -68,9 +65,9 @@ public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
             throws Exception {
 
         String sentence = (String) msg;
-        
+
         // Parse message
-        Matcher parser = pattern.matcher(sentence);
+        Matcher parser = PATTERN.matcher(sentence);
         if (!parser.matches()) {
             return null;
         }
@@ -85,32 +82,32 @@ public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
         position.setDeviceId(getDeviceId());
-        
+
         // Date and time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-        time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.YEAR, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+        time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+        time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
         position.setTime(time.getTime());
-        
+
         // Location data
-        position.setLongitude(Double.valueOf(parser.group(index++)));
-        position.setLatitude(Double.valueOf(parser.group(index++)));
-        position.setSpeed(Double.valueOf(parser.group(index++)));
-        position.setCourse(Double.valueOf(parser.group(index++)));
-        position.setAltitude(Double.valueOf(parser.group(index++)));
-        
+        position.setLongitude(Double.parseDouble(parser.group(index++)));
+        position.setLatitude(Double.parseDouble(parser.group(index++)));
+        position.setSpeed(Double.parseDouble(parser.group(index++)));
+        position.setCourse(Double.parseDouble(parser.group(index++)));
+        position.setAltitude(Double.parseDouble(parser.group(index++)));
+
         // Satellites
-        int satellites = Integer.valueOf(parser.group(index++));
+        int satellites = Integer.parseInt(parser.group(index++));
         position.setValid(satellites >= 3);
         position.set(Event.KEY_SATELLITES, satellites);
-        
+
         // Report identifier
-        position.set(Event.KEY_INDEX, Long.valueOf(parser.group(index++)));
+        position.set(Event.KEY_INDEX, Long.parseLong(parser.group(index++)));
 
         // Input
         position.set(Event.KEY_INPUT, parser.group(index++));
@@ -123,8 +120,8 @@ public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
         position.set(Event.PREFIX_ADC + 2, parser.group(index++));
 
         // J1939 data
-        position.set("vss", parser.group(index++));
-        position.set("rpm", parser.group(index++));
+        position.set(Event.KEY_OBD_SPEED, parser.group(index++));
+        position.set(Event.KEY_RPM, parser.group(index++));
         position.set("coolant", parser.group(index++));
         position.set(Event.KEY_FUEL, parser.group(index++));
         position.set("consumption", parser.group(index++));
@@ -133,6 +130,7 @@ public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
         position.set("tpl", parser.group(index++));
         position.set("axle", parser.group(index++));
         position.set(Event.KEY_ODOMETER, parser.group(index++));
+
         return position;
     }
 

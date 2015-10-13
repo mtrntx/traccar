@@ -15,17 +15,15 @@
  */
 package org.traccar.protocol;
 
+import java.net.SocketAddress;
+import java.util.Calendar;
+import java.util.TimeZone;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
-
-import java.net.SocketAddress;
-import java.util.Calendar; 
-import java.util.TimeZone;
 
 public class Avl301ProtocolDecoder extends BaseProtocolDecoder {
 
@@ -45,9 +43,9 @@ public class Avl301ProtocolDecoder extends BaseProtocolDecoder {
         return imei.toString();
     }
 
-    private static final int MSG_LOGIN = 'L';
-    private static final int MSG_STATUS = 'H';
-    private static final int MSG_GPS_LBS_STATUS = '$';
+    public static final int MSG_LOGIN = 'L';
+    public static final int MSG_STATUS = 'H';
+    public static final int MSG_GPS_LBS_STATUS = '$';
 
     private static void sendResponse(Channel channel, int type) {
         if (channel != null) {
@@ -102,7 +100,6 @@ public class Avl301ProtocolDecoder extends BaseProtocolDecoder {
             // GPS length and Satellites count
             int gpsLength = buf.readUnsignedByte();
             position.set(Event.KEY_SATELLITES, gpsLength & 0xf);
-            gpsLength >>= 4;
 
             //Skip Satellite numbers
             buf.skipBytes(1);
@@ -116,8 +113,12 @@ public class Avl301ProtocolDecoder extends BaseProtocolDecoder {
             int union = buf.readUnsignedShort();
             position.setCourse(union & 0x03FF);
             position.setValid((union & 0x1000) != 0);
-            if ((union & 0x0400) != 0) latitude = -latitude;
-            if ((union & 0x0800) != 0) longitude = -longitude;
+            if ((union & 0x0400) != 0) {
+                latitude = -latitude;
+            }
+            if ((union & 0x0800) != 0) {
+                longitude = -longitude;
+            }
 
             position.setLatitude(latitude);
             position.setLongitude(longitude);

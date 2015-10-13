@@ -16,16 +16,13 @@
 package org.traccar.protocol;
 
 import java.net.SocketAddress;
-import java.util.Calendar; 
+import java.util.Calendar;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
@@ -36,14 +33,14 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern patternHeader = Pattern.compile(
+    private static final Pattern PATTERN_HEADER = Pattern.compile(
             "#(\\d+)#" +                   // IMEI
             "[^#]+#" +
             "\\d+#" +
             "([^#]+)#" +                   // Status
             "\\d+");                       // Number of records
 
-    private static final Pattern patternPosition = Pattern.compile(
+    private static final Pattern PATTERN_POSITION = Pattern.compile(
             "#([0-9a-f]+)?" +              // Cell info
             "\\$GPRMC," +
             "(\\d{2})(\\d{2})(\\d{2})\\.(\\d+)," + // Time (HHMMSS.SSS)
@@ -67,7 +64,7 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
 
         // Decode header
         String header = sentence.substring(0, sentence.indexOf('\r'));
-        Matcher parser = patternHeader.matcher(header);
+        Matcher parser = PATTERN_HEADER.matcher(header);
         if (!parser.matches()) {
             return null;
         }
@@ -79,63 +76,63 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
 
         // Get status
         String status = parser.group(2);
-        
+
         String[] messages = sentence.substring(sentence.indexOf('\n') + 1).split("\r\n");
         List<Position> positions = new LinkedList<>();
-        
+
         for (String message : messages) {
-            parser = patternPosition.matcher(message);
+            parser = PATTERN_POSITION.matcher(message);
             if (parser.matches()) {
                 Position position = new Position();
                 position.setProtocol(getProtocolName());
                 position.setDeviceId(getDeviceId());
 
                 Integer index = 1;
-                
+
                 // Cell
                 position.set(Event.KEY_CELL, parser.group(index++));
 
                 // Time
                 Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
                 time.clear();
-                time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-                time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-                time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
+                time.set(Calendar.HOUR_OF_DAY, Integer.parseInt(parser.group(index++)));
+                time.set(Calendar.MINUTE, Integer.parseInt(parser.group(index++)));
+                time.set(Calendar.SECOND, Integer.parseInt(parser.group(index++)));
                 index += 1; // Skip milliseconds
 
                 // Validity
                 position.setValid(parser.group(index++).compareTo("A") == 0);
 
                 // Latitude
-                Double latitude = Double.valueOf(parser.group(index++));
-                latitude += Double.valueOf(parser.group(index++)) / 60;
+                Double latitude = Double.parseDouble(parser.group(index++));
+                latitude += Double.parseDouble(parser.group(index++)) / 60;
                 if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
                 position.setLatitude(latitude);
 
                 // Longitude
-                Double longitude = Double.valueOf(parser.group(index++));
-                longitude += Double.valueOf(parser.group(index++)) / 60;
+                Double longitude = Double.parseDouble(parser.group(index++));
+                longitude += Double.parseDouble(parser.group(index++)) / 60;
                 if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
                 position.setLongitude(longitude);
 
                 // Speed
                 String speed = parser.group(index++);
                 if (speed != null) {
-                    position.setSpeed(Double.valueOf(speed));
+                    position.setSpeed(Double.parseDouble(speed));
                 }
 
                 // Course
                 String course = parser.group(index++);
                 if (course != null) {
-                    position.setCourse(Double.valueOf(course));
+                    position.setCourse(Double.parseDouble(course));
                 }
 
                 // Date
-                time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-                time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-                time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+                time.set(Calendar.DAY_OF_MONTH, Integer.parseInt(parser.group(index++)));
+                time.set(Calendar.MONTH, Integer.parseInt(parser.group(index++)) - 1);
+                time.set(Calendar.YEAR, 2000 + Integer.parseInt(parser.group(index++)));
                 position.setTime(time.getTime());
-                
+
                 // Status
                 position.set(Event.KEY_STATUS, status);
                 positions.add(position);

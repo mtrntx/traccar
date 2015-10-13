@@ -18,8 +18,11 @@ package org.traccar;
 import java.util.Locale;
 import org.traccar.helper.Log;
 
-public class Main {
-    
+public final class Main {
+
+    private Main() {
+    }
+
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ENGLISH);
 

@@ -14,36 +14,42 @@
  * limitations under the License.
  */
 
+var Locale = {};
+
 Ext.Loader.setConfig({
     disableCaching: false
 });
 
-var availableLanguages = {
+Locale.languages = {
+    'bg': { name: 'Български', code: 'bg' },
+    'cs': { name: 'Čeština', code: 'cs' },
     'de': { name: 'Deutsch', code: 'de' },
     'dk': { name: 'Dansk', code: 'dk' },
     'en': { name: 'English', code: 'en' },
     'es': { name: 'Español', code: 'es' },
     'fr': { name: 'Français', code: 'fr' },
+    'hu': { name: 'Magyar', code: 'hu' },
     'lt': { name: 'Lietuvių', code: 'lt' },
     'nl': { name: 'Nederlands', code: 'nl' },
     'pl': { name: 'Polski', code: 'pl' },
     'pt': { name: 'Português', code: 'pt' },
     'ru': { name: 'Русский', code: 'ru' },
+    'si': { name: 'සිංහල', code: 'en' },
     'sk': { name: 'Slovenčina', code: 'sk' },
     'sr': { name: 'Srpski', code: 'sr' },
     'th': { name: 'ไทย', code: 'th' },
     'zh': { name: '中文', code: 'zh_CN' }
 };
 
-var language = Ext.Object.fromQueryString(window.location.search.substring(1)).locale;
-if (language === undefined) {
-    language = window.navigator.userLanguage || window.navigator.language;
-    language = language.substr(0, 2);
+Locale.language = Ext.Object.fromQueryString(window.location.search.substring(1)).locale;
+if (Locale.language === undefined) {
+    Locale.language = window.navigator.userLanguage || window.navigator.language;
+    Locale.language = Locale.language.substr(0, 2);
 }
 
-if (!(language in availableLanguages)) {
-    language = 'en'; // default
+if (!(Locale.language in Locale.languages)) {
+    Locale.language = 'en'; // default
 }
 
-Ext.Loader.loadScript('/l10n/' + language + '.js');
-Ext.Loader.loadScript('//cdnjs.cloudflare.com/ajax/libs/extjs/6.0.0/classic/locale/locale-' + availableLanguages[language].code + '.js');
+Ext.Loader.loadScript('/l10n/' + Locale.language + '.js');
+Ext.Loader.loadScript('//cdnjs.cloudflare.com/ajax/libs/extjs/6.0.0/classic/locale/locale-' + Locale.languages[Locale.language].code + '.js');

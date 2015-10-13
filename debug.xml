@@ -14,7 +14,7 @@
     <entry key='web.path'>web</entry>
     <entry key='web.debug'>true</entry>
 
-    <entry key='geocoder.enable'>false</entry>
+    <entry key='geocoder.enable'>true</entry>
     <entry key='geocoder.type'>nominatim</entry>
     <entry key='geocoder.url'>http://nominatim.openstreetmap.org/reverse</entry>
 
@@ -73,8 +73,7 @@
         uniqueId VARCHAR(128) NOT NULL UNIQUE,
         status VARCHAR(128),
         lastUpdate TIMESTAMP,
-        positionId INT,
-        dataId INT);
+        positionId INT);
 
         CREATE TABLE user_device (
         userId INT NOT NULL,
@@ -100,25 +99,10 @@
         speed FLOAT NOT NULL,
         course FLOAT NOT NULL,
         address VARCHAR(512),
-        other VARCHAR(4096) NOT NULL,
+        attributes VARCHAR(4096) NOT NULL,
         FOREIGN KEY (deviceId) REFERENCES device (id) ON DELETE CASCADE);
         
         CREATE INDEX position_deviceId_fixTime ON position (deviceId, fixTime);
-
-        CREATE TABLE data (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        protocol VARCHAR(128),
-        deviceId INT NOT NULL,
-        serverTime TIMESTAMP NOT NULL,
-        deviceTime TIMESTAMP NOT NULL,
-        other VARCHAR(4096) NOT NULL,
-        FOREIGN KEY (deviceId) REFERENCES device (id) ON DELETE CASCADE);
-
-        ALTER TABLE device ADD
-        FOREIGN KEY (positionId) REFERENCES position (id) ON DELETE CASCADE;
-
-        ALTER TABLE device ADD
-        FOREIGN KEY (dataId) REFERENCES data (id) ON DELETE CASCADE;
 
         CREATE TABLE server (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -238,8 +222,8 @@
     </entry>
 
     <entry key='database.insertPosition'>
-        INSERT INTO position (deviceId, protocol, serverTime, deviceTime, fixTime, valid, latitude, longitude, altitude, speed, course, address, other)
-        VALUES (:deviceId, :protocol, CURRENT_TIMESTAMP(), :time, :time, :valid, :latitude, :longitude, :altitude, :speed, :course, :address, :other);
+        INSERT INTO position (deviceId, protocol, serverTime, deviceTime, fixTime, valid, latitude, longitude, altitude, speed, course, address, attributes)
+        VALUES (:deviceId, :protocol, CURRENT_TIMESTAMP(), :time, :time, :valid, :latitude, :longitude, :altitude, :speed, :course, :address, :attributes);
     </entry>
 
     <entry key='database.selectLatestPositions'>
@@ -291,7 +275,7 @@
     <entry key='ywt.port'>5035</entry>
     <entry key='tk102.port'>5036</entry>
     <entry key='intellitrac.port'>5037</entry>
-    <entry key='xt7.port'>5038</entry>
+    <entry key='gpsmta.port'>5038</entry>
     <entry key='wialon.port'>5039</entry>
     <entry key='carscop.port'>5040</entry>
     <entry key='apel.port'>5041</entry>
@@ -342,5 +326,8 @@
     <entry key='castel.port'>5086</entry>
     <entry key='mxt.port'>5087</entry>
     <entry key='cityeasy.port'>5088</entry>
+    <entry key='aquila.port'>5089</entry>
+    <entry key='flextrack.port'>5090</entry>
+    <entry key='blackkite.port'>5091</entry>
 
 </properties>

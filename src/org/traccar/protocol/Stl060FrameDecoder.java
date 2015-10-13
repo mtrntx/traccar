@@ -16,30 +16,27 @@
 package org.traccar.protocol;
 
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.handler.codec.frame.DelimiterBasedFrameDecoder;
+import org.traccar.CharacterDelimiterFrameDecoder;
 import org.traccar.helper.ChannelBufferTools;
 
-public class Stl060FrameDecoder extends DelimiterBasedFrameDecoder {
+public class Stl060FrameDecoder extends CharacterDelimiterFrameDecoder {
 
-    private static final byte delimiter[] = { (byte) '#' };
-    
     public Stl060FrameDecoder(int maxFrameLength) {
-        super(maxFrameLength, ChannelBuffers.wrappedBuffer(delimiter));
+        super(maxFrameLength, '#');
     }
-    
+
     @Override
     protected Object decode(
             ChannelHandlerContext ctx,
             Channel channel,
             ChannelBuffer buf) throws Exception {
-        
+
         ChannelBuffer result = (ChannelBuffer) super.decode(ctx, channel, buf);
-        
+
         if (result != null) {
-            
+
             Integer beginIndex = ChannelBufferTools.find(
                     result, 0, result.readableBytes(), "$");
             if (beginIndex == null) {

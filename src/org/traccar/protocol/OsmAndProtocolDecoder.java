@@ -35,16 +35,16 @@ import org.traccar.model.Event;
 import org.traccar.model.Position;
 
 public class OsmAndProtocolDecoder extends BaseProtocolDecoder {
-    
+
     public OsmAndProtocolDecoder(OsmAndProtocol protocol) {
         super(protocol);
     }
-    
+
     @Override
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
-        
+
         HttpRequest request = (HttpRequest) msg;
         QueryStringDecoder decoder = new QueryStringDecoder(request.getUri());
         Map<String, List<String>> params = decoder.getParameters();
@@ -59,7 +59,12 @@ public class OsmAndProtocolDecoder extends BaseProtocolDecoder {
         position.setProtocol(getProtocolName());
 
         // Identification
-        String id = params.get(params.containsKey("id") ? "id" : "deviceid").get(0);
+        String id;
+        if (params.containsKey("id")) {
+            id = params.get("id").get(0);
+        } else {
+            id = params.get("deviceid").get(0);
+        }
         if (!identify(id, channel)) {
             return null;
         }
@@ -69,7 +74,11 @@ public class OsmAndProtocolDecoder extends BaseProtocolDecoder {
         position.setValid(true);
         if (params.containsKey("timestamp")) {
             try {
-                position.setTime(new Date(Long.valueOf(params.get("timestamp").get(0)) * 1000));
+                long timestamp = Long.parseLong(params.get("timestamp").get(0));
+                if (timestamp < Integer.MAX_VALUE) {
+                    timestamp *= 1000;
+                }
+                position.setTime(new Date(timestamp));
             } catch (NumberFormatException error) {
                 DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                 position.setTime(dateFormat.parse(params.get("timestamp").get(0)));
@@ -77,22 +86,22 @@ public class OsmAndProtocolDecoder extends BaseProtocolDecoder {
         } else {
             position.setTime(new Date());
         }
-        position.setLatitude(Double.valueOf(params.get("lat").get(0)));
-        position.setLongitude(Double.valueOf(params.get("lon").get(0)));
+        position.setLatitude(Double.parseDouble(params.get("lat").get(0)));
+        position.setLongitude(Double.parseDouble(params.get("lon").get(0)));
 
         // Optional parameters
         if (params.containsKey("speed")) {
-            position.setSpeed(Double.valueOf(params.get("speed").get(0)));
+            position.setSpeed(Double.parseDouble(params.get("speed").get(0)));
         }
 
         if (params.containsKey("bearing")) {
-            position.setCourse(Double.valueOf(params.get("bearing").get(0)));
+            position.setCourse(Double.parseDouble(params.get("bearing").get(0)));
         } else if (params.containsKey("heading")) {
-            position.setCourse(Double.valueOf(params.get("heading").get(0)));
+            position.setCourse(Double.parseDouble(params.get("heading").get(0)));
         }
 
         if (params.containsKey("altitude")) {
-            position.setAltitude(Double.valueOf(params.get("altitude").get(0)));
+            position.setAltitude(Double.parseDouble(params.get("altitude").get(0)));
         }
 
         if (params.containsKey("hdop")) {
